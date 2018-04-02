@@ -40,7 +40,7 @@ cd XLAHacks.jl.git # N.B.: It's important you're in this directory when starting
 ~/julia/julia --depwarn=no # Depwarn disables deprecation warnings - Strongly recommended - this is pre-alpha code so tons of warning
 ] up --manifest --fixed # Include the ']', that's the hotkey for the pkg manager
 ] build Cxx
-julia> include("XLA.jl")
+julia> include("src/XLA.jl")
 ```
 
 That should add everything properly. Alternatively,
