@@ -1,0 +1,1 @@
+/usr/include/python3.6m/numpy/__multiarray_api.h
