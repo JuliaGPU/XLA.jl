@@ -1,63 +1,156 @@
-ENV["JULIA_CXX_RTTI"]="1"
+module XLA
+    using ProtoBuf
+    using TensorFlow
 
-if !haskey(ENV, "LIBXLA")
-    error("LIBXLA environment variable not set. Set it to a .so that has xla symbols exposed.")
+    import Base: run
+
+    # Load generated xla protobuf definitions
+    include(joinpath(dirname(@__FILE__), "gen","tensorflow.jl"))
+    include(joinpath(dirname(@__FILE__), "gen","xla.jl"))
+    include(joinpath(dirname(@__FILE__), "gen","xrt.jl"))
+    using .xrt
+    using .xla
+
+    include("literal.jl")
+    include("xrt.jl")
+    include("hlo.jl")
+    include("execute.jl")
+
+    regen_proto() = run(ProtoBuf.protoc(`-I=/home/keno/tensorflow/ --julia_out=gen /home/keno/tensorflow/tensorflow/compiler/xrt/xrt.proto`))
+
+#=
+    TensorFlow.import_op("XRTCompile")
+    TensorFlow.import_op("XRTExecute")
+    TensorFlow.import_op("XRTAllocate")
+    TensorFlow.import_op("XRTReadLiteral")
+    TensorFlow.import_op("XRTReadLiteralAndRelease")
+    TensorFlow.import_op("XRTReleaseAllocationHandle")
+    TensorFlow.import_op("XRTReleaseCompilationHandle")
+=#
+
+#= 
+    using XLA: GenericHloOp, HloConstant
+    comp = HloComputationProto(
+        name = "comp",
+        instructions = HloInstructionProto[ ],
+        id = 0
+    )
+    root = HloInstructionProto(
+        comp, GenericHloOp{:add, Float64, ()}(),
+        HloInstructionProto.((comp,), (HloConstant(1.0), HloConstant(2.0)))...)
+    comp.root_id = root.id
+    pshape = ProgramShape(
+        result = root.shape
+    )
+
+    config = XLAComputationConfig(
+        program_shape = pshape
+    )
+    hlo_module = HloModuleProto(
+        name = "test",
+        computations = [ comp ],
+        entry_computation_name = "op",
+        entry_computation_id = 0,
+        id = 0,
+        program_shape = pshape,
+    )
+    hlo = HloProto(
+        hlo_module = hlo_module
+    )
+    hlo_snap = HloSnapshot(
+        hlo = hlo
+    )
+    xlac = XLAComputation(
+        config=config,
+        hlo_snapshot = hlo_snap
+    )
+    run(XLA.compile(sess, xlac))
+=#
+
+#=
+    scalar_shape = Shape(
+        element_type = PrimitiveType.F64,
+        dimensions = [],
+        layout = Layout(
+            format = Format.DENSE,
+            max_sparse_elements = 0
+        )
+    )
+
+    pshape = ProgramShape(
+        result = scalar_shape
+    )
+
+    config = XLAComputationConfig(
+        program_shape = pshape
+    )
+    instruction0 = HloInstructionProto(
+        name = "const0",
+        opcode = "constant",
+        shape = scalar_shape,
+        literal = LiteralProto(
+            shape = scalar_shape,
+            f64s = [1.0]),
+        id = 0
+    )
+    instruction1 = HloInstructionProto(
+        name = "const1",
+        opcode = "constant",
+        shape = scalar_shape,
+        literal = LiteralProto(
+            shape = scalar_shape,
+            f64s = [2.0]),
+        id = 1
+    )
+    instruction2 = HloInstructionProto(
+        name = "op",
+        opcode = "add",
+        shape = scalar_shape,
+        operand_ids = [0, 1],
+        id = 2
+    )
+    comp = HloComputationProto(
+        name = "comp",
+        root_id = 2,
+        instructions = [ instruction0, instruction1, instruction2 ],
+        id = 0
+    )
+    hlo_module = HloModuleProto(
+        name = "test",
+        computations = [ comp ],
+        entry_computation_name = "op",
+        entry_computation_id = 0,
+        id = 0,
+        program_shape = pshape,
+    )
+    hlo = HloProto(
+        hlo_module = hlo_module
+    )
+    hlo_snap = HloSnapshot(
+        hlo = hlo
+    )
+    xrt = XLAComputation(
+        config=config,
+        hlo_snapshot = hlo_snap
+    )
+
+    iob = PipeBuffer();
+    writeproto(iob, xrt)
+    #hlo2 = readproto(iob, XLAComputation)
+
+    str = String(take!(iob))
+
+    sess = Session(Graph(); target="grpc://localhost:8470")
+    run(sess, TensorFlow.Ops.xrt_compile(str))
+=#
+
+#=
+    econfig = XRTExecutionConfig()
+
+=#
+
+#=
+    readproto(IOBuffer(run(sess, TensorFlow.Ops.xrt_read_literal(0))), LiteralProto())
+=#
+
 end
-
-# Load generated xla protobuf definitions
-include(joinpath(dirname(@__FILE__), "gen","xla.jl"))
-using .xla
-using ProtoBuf
-
-# Load Flux and linear algebra
-using Flux
-using LinearAlgebra
-
-# Uncomment this if you also want to play with
-# tensorflow itself
-# ENV["LIBTENSORFLOW"] = ENV["LIBXLA"]
-# using TensorFlow
-
-# Workarounds some bugs
-pop!(Base.Multimedia.displays)
-code_typed(*, Tuple{Array{Float64, 2}, Array{Float32,1}})
-Base.keys(s::Core.SimpleVector) = 1:length(s)
-
-
-# Hacky version to get current beta compiler
-#using NotInferenceDontLookHere
-#const Compiler = NI
-const Compiler = Core.Compiler
-Base.getindex(x::Compiler.IRCode, i) = Compiler.getindex(x, i)
-Base.setindex!(x::Compiler.IRCode, v, i) = Compiler.setindex!(x, v, i)
-
-using Core.IR
-using Base.Meta
-module IRShow
-    using Core.Compiler: CFG, IRCode, scan_ssa_use!, ReturnNode, GotoIfNot, Argument
-    using Core.IR
-    using Base: IdSet, peek
-    using Base.Meta: isexpr
-    Core.Compiler.push!(x::IdSet, y) = Base.push!(x, y)
-    include(Base.joinpath(Base.Sys.BINDIR, Base.DATAROOTDIR, "julia", "base", "compiler/ssair/show.jl"))
-end
-
-# Load XLA C++ library
-using Cxx
-Cxx.addHeaderDir(joinpath(dirname(@__FILE__), "cxx_headers/proto"), kind=C_System)
-Cxx.addHeaderDir(joinpath(dirname(@__FILE__), "cxx_headers/genfiles"), kind=C_System)
-Cxx.addHeaderDir(joinpath(dirname(@__FILE__), "cxx_headers/tensorflow"), kind=C_System)
-Cxx.addHeaderDir(joinpath(dirname(@__FILE__), "cxx_headers/eigen"), kind=C_System)
-Libdl.dlopen(ENV["LIBXLA"], Libdl.RTLD_GLOBAL)
-
-cxx"""
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
-"""
-
-# Initialize client
-client = icxx"xla::ClientLibrary::LocalClientOrDie();"
-
-include("xla_compiler.jl")
-
-@info "XLA Compiler loaded. See demo.jl for examples."

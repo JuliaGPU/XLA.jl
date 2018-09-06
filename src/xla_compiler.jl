@@ -293,7 +293,6 @@ function generate_xla_from(builder, ir, world, argnames, argshapes)
             elseif Compiler.is_known_call(expr, max, ir, ir.mod)
                 arghandles = map(e->abstract_eval_xla(builder, state, e), expr.args[2:end])
                 argtypes = [Compiler.widenconst(Compiler.exprtype(arg, ir, ir.mod)) for arg in expr.args]
-                @show argtypes
                 op_type = promote_type(argtypes[2:end]...)
                 arghandles = map(zip(arghandles, argtypes[2:end])) do (arg, typ)
                     if typ != op_type
