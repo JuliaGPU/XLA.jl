@@ -15,8 +15,11 @@ module XLA
     include("xrt.jl")
     include("hlo.jl")
     include("execute.jl")
+    include("linalg.jl")
 
     regen_proto() = run(ProtoBuf.protoc(`-I=/home/keno/tensorflow/ --julia_out=gen /home/keno/tensorflow/tensorflow/compiler/xrt/xrt.proto`))
+
+    export XRTArray, GenericHloOp, HloConstant, HloDot, HloSlice
 
 #=
     TensorFlow.import_op("XRTCompile")
@@ -84,6 +87,7 @@ module XLA
     config = XLAComputationConfig(
         program_shape = pshape
     )
+#=
     instruction0 = HloInstructionProto(
         name = "const0",
         opcode = "constant",
@@ -102,17 +106,19 @@ module XLA
             f64s = [2.0]),
         id = 1
     )
+=#
     instruction2 = HloInstructionProto(
         name = "op",
-        opcode = "add",
+        opcode = "parameter",
         shape = scalar_shape,
-        operand_ids = [0, 1],
+        parameter_number = 0,
+        #operand_ids = [0, 1],
         id = 2
     )
     comp = HloComputationProto(
         name = "comp",
         root_id = 2,
-        instructions = [ instruction0, instruction1, instruction2 ],
+        instructions = [ #= instruction0, instruction1, =# instruction2 ],
         id = 0
     )
     hlo_module = HloModuleProto(
@@ -129,13 +135,14 @@ module XLA
     hlo_snap = HloSnapshot(
         hlo = hlo
     )
-    xrt = XLAComputation(
+    xlac = XLAComputation(
         config=config,
         hlo_snapshot = hlo_snap
     )
 
-    iob = PipeBuffer();
-    writeproto(iob, xrt)
+    open("op_param_bounds.pb", "w") do f
+        writeproto(f, hlo_snap)
+    end
     #hlo2 = readproto(iob, XLAComputation)
 
     str = String(take!(iob))

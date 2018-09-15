@@ -1,5 +1,5 @@
 # Run a single op over XRTArrays
-function execute(op::HloOp, args::XRTArray...)
+function build_computation(op::HloOp, args::XRTArray...)
     comp = HloComputationProto(
         name = "comp",
         instructions = HloInstructionProto[ ],
@@ -34,8 +34,24 @@ function execute(op::HloOp, args::XRTArray...)
         config=config,
         hlo_snapshot = hlo_snap
     )
-    run(XLA.compile(args[1].storage.sess, xlac), map(a->a.storage, args)...)
 end
-(op::GenericHloOp)(args::XRTArray...) = execute(op, args...)
-(op::HloDot)(args::XRTArray...) = execute(op, args...)
-(op::HloSlice)(args::XRTArray...) = execute(op, args...)
+
+
+function shape_infer(op::HloOp, args::Type{<:XRTArray}...)
+    if isa(op, HloDot)
+        return (Float32, (10,), 1)
+    end
+end
+
+function Base.run(xrt::XRTCompilation, args::XRTArray...)
+    run(xrt, map(a->a.storage, args)...)
+end
+
+function execute(op::HloOp, args::XRTArray...)
+    xrt = XLA.compile(args[1].storage.sess, build_computation(op, args...))
+    run(xrt, args...)::XRTArray{shape_infer(op, map(typeof, args)...)...}
+end
+
+@noinline (op::GenericHloOp)(args::XRTArray...) = execute(op, args...)
+@noinline (op::HloDot)(args::XRTArray...) = execute(op, args...)
+@noinline (op::HloSlice)(args::XRTArray...) = execute(op, args...)
