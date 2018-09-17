@@ -68,6 +68,7 @@ struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
         new{T, Dims, N}(h)
     end
 end
+XRTArray(sess, A::AbstractArray) = XRTArray(sess, collect(A)::Array)
 Base.eltype(A::XRTArray{T}) where {T} = T
 Base.size(A::XRTArray{T, Dims}) where {T, Dims} = Dims
 Base.size(A::XRTArray{T, Dims}, i) where {T, Dims} = Dims[i]

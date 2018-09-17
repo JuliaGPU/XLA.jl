@@ -49,9 +49,13 @@ end
 
 function execute(op::HloOp, args::XRTArray...)
     xrt = XLA.compile(args[1].storage.sess, build_computation(op, args...))
-    run(xrt, args...)::XRTArray{shape_infer(op, map(typeof, args)...)...}
+    run(xrt, args...) #::XRTArray{shape_infer(op, map(typeof, args)...)...}
 end
 
 @noinline (op::GenericHloOp)(args::XRTArray...) = execute(op, args...)
+@noinline (op::HloCollapse)(args::XRTArray...) = execute(op, args...)
 @noinline (op::HloDot)(args::XRTArray...) = execute(op, args...)
+@noinline (op::HloReshape)(args::XRTArray...) = execute(op, args...)
+@noinline (op::HloBroadcast)(args::XRTArray...) = execute(op, args...)
+@noinline (op::HloConv)(args::XRTArray...) = execute(op, args...)
 @noinline (op::HloSlice)(args::XRTArray...) = execute(op, args...)

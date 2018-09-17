@@ -64,6 +64,99 @@ function (m::HloMap)(args::XRTArray...)
     XRTArray(args[1].storage.sess, map(m.f, map(x->convert(Array, x), args)...))::typeof(args[1])
 end
 
+struct WindowDims
+    size::Int64
+    stride::Int64
+    padding_low::Int64
+    padding_high::Int64
+    window_dilation::Int64
+    base_dilation::Int64
+    window_reversal::Bool
+end
+
+struct ConvDimNums{N1, N2, N3}
+    input_batch_dimension::Int64
+    input_feature_dimension::Int64
+    input_spatial_dimensions::NTuple{N1, Int64}
+    kernel_input_feature_dimension::Int64
+    kernel_output_feature_dimension::Int64
+    kernel_spatial_dimensions::NTuple{N2, Int64}
+    output_batch_dimension::Int64
+    output_feature_dimension::Int64
+    output_spatial_dimensions::NTuple{N3, Int64}
+end
+
+struct HloConv{T, Shape} <: HloOp{:convolution, T, Shape}
+    window::NTuple{N, WindowDims} where N
+    dims::ConvDimNums
+end
+
+xla.WindowDimension(w::WindowDims) = xla.WindowDimension(
+    size = w.size,
+    stride = w.stride,
+    padding_low = w.padding_low,
+    padding_high = w.padding_high,
+    window_dilation = w.window_dilation,
+    base_dilation = w.base_dilation,
+    window_reversal = w.window_reversal
+)
+
+xla.ConvolutionDimensionNumbers(cdn::ConvDimNums) = xla.ConvolutionDimensionNumbers(
+    input_batch_dimension = cdn.input_batch_dimension,
+    input_feature_dimension = cdn.input_feature_dimension,
+    input_spatial_dimensions = collect(cdn.input_spatial_dimensions),
+    kernel_input_feature_dimension = cdn.kernel_input_feature_dimension,
+    kernel_output_feature_dimension = cdn.kernel_output_feature_dimension,
+    kernel_spatial_dimensions = collect(cdn.kernel_spatial_dimensions),
+    output_batch_dimension = cdn.output_batch_dimension,
+    output_feature_dimension = cdn.output_feature_dimension,
+    output_spatial_dimensions = collect(cdn.output_spatial_dimensions),
+)
+
+function fill_fields!(proto::HloInstructionProto, d::HloConv)
+    window = xla.Window(dimensions = map(xla.WindowDimension, collect(d.window)))
+    proto.window = window
+    proto.convolution_dimension_numbers = xla.ConvolutionDimensionNumbers(d.dims)
+end
+
+struct HloReduceWindow{T, Shape} <: HloOp{:reduceWindow, T, Shape}
+    f
+    window::NTuple{N, WindowDims} where N
+end
+function fill_fields!(proto::HloInstructionProto, d::HloReduceWindow)
+    window = xla.Window(dimensions = map(xla.WindowDimension, collect(d.window)))
+    proto.window = window
+end
+
+function (m::HloReduceWindow{T, Shape})(arg::XRTArray) where {T, Shape}
+    x = XRTArray(arg.storage.sess, rand(T, Shape))
+    x
+end
+
+
+struct HloReshape{T, Shape} <: HloOp{:reshape, T, Shape}
+    collapse_order::NTuple{N, Int} where N
+    result_shape::NTuple{N, Int} where N
+end
+function fill_fields!(proto::HloInstructionProto, r::HloReshape)
+    proto.dimensions = collect(r.collapse_order)
+end
+
+struct HloCollapse{T, Shape} <: HloOp{:reshape, T, Shape}
+    collapse_order::NTuple{N, Int} where N
+end
+function fill_fields!(proto::HloInstructionProto, r::HloCollapse)
+    proto.dimensions = collect(r.collapse_order)
+end
+
+struct HloBroadcast{T, Shape} <: HloOp{:broadcast, T, Shape}
+    dim_mappings::NTuple{N, Int} where N
+end
+function fill_fields!(proto::HloInstructionProto, r::HloBroadcast)
+    # TODO: Where is the collapse order represented in the proto?
+    proto.dimensions = collect(r.dim_mappings)
+end
+
 struct Argument
     shape::Shape
     id::Int64
