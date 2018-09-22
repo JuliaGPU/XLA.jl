@@ -128,11 +128,25 @@ function fill_fields!(proto::HloInstructionProto, d::HloReduceWindow)
     proto.window = window
 end
 
-function (m::HloReduceWindow{T, Shape})(arg::XRTArray) where {T, Shape}
-    x = XRTArray(arg.storage.sess, rand(T, Shape))
-    x
+struct HloReduce{T, Shape} <: HloOp{:reduce, T, Shape}
+    f
+    dims::NTuple{N, Int64} where N
+end
+function fill_fields!(proto::HloInstructionProto, d::HloReduce)
+    proto.dimensions = collect(Int64, d.dims)
 end
 
+
+# Temporary to check all operations are defined
+function (m::HloReduceWindow{T, Shape})(arg::XRTArray) where {T, Shape}
+    x = XRTArray(arg.storage.sess, rand(T, Shape))
+    x::XRTArray{T, Shape}
+end
+
+function (m::HloReduce{T, Shape})(arg::XRTArray, init::XRTArray) where {T, Shape}
+    x = XRTArray(arg.storage.sess, rand(T, Shape))
+    x::XRTArray{T, Shape}
+end
 
 struct HloReshape{T, Shape} <: HloOp{:reshape, T, Shape}
     collapse_order::NTuple{N, Int} where N
@@ -154,13 +168,22 @@ struct HloBroadcast{T, Shape} <: HloOp{:broadcast, T, Shape}
 end
 function fill_fields!(proto::HloInstructionProto, r::HloBroadcast)
     # TODO: Where is the collapse order represented in the proto?
-    proto.dimensions = collect(r.dim_mappings)
+    proto.dimensions = collect(Int64, r.dim_mappings)
 end
 
 struct Argument
     shape::Shape
     id::Int64
 end
+
+struct HloRng{T, Shape} <: HloOp{:rng, T, Shape}
+    kind::Int
+end
+function fill_fields!(proto::HloInstructionProto, r::HloRng)
+    # TODO: Where is the collapse order represented in the proto?
+    proto.distribution = Int32(r.kind)
+end
+
 
 let global_id = 0
     global make_id

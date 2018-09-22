@@ -68,6 +68,8 @@ struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
         new{T, Dims, N}(h)
     end
 end
+const XRTMatrix{T, Dims} = XRTArray{T, Dims, 2} where {T, Dims}
+const XRTVector{T, Dims} = XRTArray{T, Dims, 1} where {T, Dims}
 XRTArray(sess, A::AbstractArray) = XRTArray(sess, collect(A)::Array)
 Base.eltype(A::XRTArray{T}) where {T} = T
 Base.size(A::XRTArray{T, Dims}) where {T, Dims} = Dims
@@ -105,3 +107,7 @@ end
 Base.print_array(io::IO, A::XRTArray) = Base.print_array(io, convert(Array, A))
 Base.show_vector(io::IO, A::XRTArray, opn='[', cls=']') =
     Base.show_vector(io, convert(Array, A), opn, cls)
+Base._show_nonempty(io::IO, A::XRTArray, prefix::String) =
+    Base._show_nonempty(io, convert(Array, A), prefix)
+Base._show_nonempty(io::IO, A::XRTMatrix, prefix::String) =
+    Base._show_nonempty(io, convert(Array, A), prefix)

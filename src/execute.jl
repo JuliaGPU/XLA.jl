@@ -1,5 +1,10 @@
 # Run a single op over XRTArrays
-function build_computation(op::HloOp, args::XRTArray...)
+const XLAScalar = Union{Bool, Int8, Int16, Int32, Int64,
+                        UInt8, UInt16, UInt32, UInt64,
+                        Float16, Float32, Float64, Complex{Float32}}
+const AnyXLA = Union{XRTArray, XLAScalar}
+
+function build_computation(op::HloOp, args::AnyXLA...)
     comp = HloComputationProto(
         name = "comp",
         instructions = HloInstructionProto[ ],
@@ -37,25 +42,24 @@ function build_computation(op::HloOp, args::XRTArray...)
 end
 
 
-function shape_infer(op::HloOp, args::Type{<:XRTArray}...)
-    if isa(op, HloDot)
-        return (Float32, (10,), 1)
-    end
+function shape_infer(op::HloOp{opcode, T, Shape} where opcode, args::Type{<:AnyXLA}...) where {T, Shape}
+    return (T, Shape, length(Shape))
 end
 
-function Base.run(xrt::XRTCompilation, args::XRTArray...)
+function Base.run(xrt::XRTCompilation, args::AnyXLA...)
     run(xrt, map(a->a.storage, args)...)
 end
 
-function execute(op::HloOp, args::XRTArray...)
+function execute(op::HloOp, args::AnyXLA...)
     xrt = XLA.compile(args[1].storage.sess, build_computation(op, args...))
-    run(xrt, args...) #::XRTArray{shape_infer(op, map(typeof, args)...)...}
+    run(xrt, args...)::XRTArray{shape_infer(op, map(typeof, args)...)...}
 end
 
-@noinline (op::GenericHloOp)(args::XRTArray...) = execute(op, args...)
-@noinline (op::HloCollapse)(args::XRTArray...) = execute(op, args...)
-@noinline (op::HloDot)(args::XRTArray...) = execute(op, args...)
-@noinline (op::HloReshape)(args::XRTArray...) = execute(op, args...)
-@noinline (op::HloBroadcast)(args::XRTArray...) = execute(op, args...)
-@noinline (op::HloConv)(args::XRTArray...) = execute(op, args...)
-@noinline (op::HloSlice)(args::XRTArray...) = execute(op, args...)
+@noinline (op::GenericHloOp)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloCollapse)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloDot)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloReshape)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloBroadcast)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloConv)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloSlice)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloRng)(args::AnyXLA...) = execute(op, args...)
