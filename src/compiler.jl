@@ -1,6 +1,7 @@
 using .Compiler: ReturnNode, argextype, Argument, SSAValue, ⊑, widenconst
 using XLA: HloParameter, HloOp, XLAComputationConfig, HloModuleProto, HloProto,
-    HloSnapshot, XLAComputation, HloMap
+    HloSnapshot, XLAComputation, HloMap, HloGetTupleElement, XLAScalar,
+    HloReduceWindow, HloReduce, HloTuple
 
 function grab_ir(f, argtypes)
     method = @which f(W, x, b)
@@ -10,30 +11,45 @@ function grab_ir(f, argtypes)
     ir = Compiler.inflate_ir(ci, mi)
 end
 
-function compile_to_xla(ir, sv)
-    @assert length(ir.cfg.blocks) == 1
-    rt = argextype(ir.stmts[end].val, ir, sv.sp)
+function _compile_to_xla!(computations, comp, ir, sv)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
-    computations = HloComputationProto[]
-    comp = HloComputationProto(
-        name = "comp",
-        instructions = HloInstructionProto[ ],
-        id = 0
-    )
-    push!(computations, comp)
     for i = 1:length(ir.argtypes)
-        if ir.argtypes[i] ⊑ XRTArray
+        # TODO: We could represent this as a kConstant
+        isa(ir.argtypes[i], Const) && continue
+        if sv.linfo.def.isva && i == length(ir.argtypes)
+            # To XLA, we express varargs as separate parameters, so gather all of
+            # them and then put them in a tuple
+            vargs = HloInstructionProto[]
+            for T in ir.argtypes[i].parameters
+                instr = HloInstructionProto(comp, "parameter")
+                instr.shape = dtype_to_shape(T)
+                instr.parameter_number = length(xla_args)
+                push!(vargs, instr)
+                push!(xla_args, T)
+            end
+            @Base.show ir.argtypes[i]
+            arg_instrs[i] = HloInstructionProto(comp, HloTuple(), vargs...)
+        elseif ir.argtypes[i] ⊑ XRTArray
             AT = widenconst(ir.argtypes[i])
             eltype = AT.parameters[1]
             dims = AT.parameters[2]
-            arg_instrs[i] = HloInstructionProto(comp, HloParameter{eltype, dims}(length(xla_args)))
+            arg_instrs[i] = HloInstructionProto(comp, HloParameter(eltype, dims, length(xla_args)))
             push!(xla_args, ir.argtypes[i])
+        elseif representable(ir.argtypes[i])
+            T = widenconst(ir.argtypes[i])
+            instr = HloInstructionProto(comp, "parameter")
+            instr.shape = dtype_to_shape(T)
+            instr.parameter_number = length(xla_args)
+            arg_instrs[i] = instr
+            push!(xla_args, T)
         end
     end
     ssa_vals = Vector{HloInstructionProto}(undef, length(ir.stmts))
     function hlo_eval(arg)
+        @show arg
         if isa(arg, Argument)
+            @Base.show arg_instrs[arg.n].parameter_number
             return arg_instrs[arg.n]
         elseif isa(arg, SSAValue)
             return ssa_vals[arg.id]
@@ -41,38 +57,81 @@ function compile_to_xla(ir, sv)
             error()
         end
     end
-    for (idx, stmt) in pairs(ir.stmts)
+    for (stmt_idx, stmt) in pairs(ir.stmts)
         isexpr(stmt, :new) && continue
         isa(stmt, ReturnNode) && continue
-        isexpr(stmt, :invoke) || error("Unrecognized expr")
-        if isa(stmt.args[2], HloOp)
-            args = map(hlo_eval, stmt.args[3:end])
-            hlo_inst = stmt.args[2]
-            proto = HloInstructionProto(comp, hlo_inst, args...)
-            if isa(hlo_inst, HloMap)
-                # We need to compute the mapped scalar function
-                if hlo_inst.f == +
-                    comp′ = HloComputationProto(
-                        name = "plus",
-                        instructions = HloInstructionProto[ ],
-                        id = 1
-                    )
-                    pushfirst!(computations, comp′)
-                    args = [ HloInstructionProto(comp′, HloParameter{Float32, ()}(i)) for i = 0:1 ]
-                    plus = HloInstructionProto(comp′, GenericHloOp{:add, Float32, ()}(), args...)
-                    comp′.root_id = plus.id
-                    proto.called_computation_ids = [comp′.id]
-                end
+        if isexpr(stmt, :call) && Compiler.is_known_call(stmt, getfield, ir, sv.sp)
+            structT = widenconst(argextype(stmt.args[2], ir, sv.sp))
+            elt = argextype(stmt.args[3], ir, sv.sp)
+            isa(elt, Const) || error("non-constant structure indexing (1)")
+            idx = Compiler.try_compute_fieldidx(structT, elt.val)
+            if idx === nothing
+                @Base.show stmt
+                @Base.show stmt_idx
+                @Base.show ir
+                @Base.show length(ir.stmts)
             end
-            ssa_vals[idx] = proto
+            idx !== nothing || error("non-constant structure indexing (2)")
+            if !representable(fieldtype(structT, idx))
+                continue
+            end
+            @Base.show stmt.args[2]
+            tuple_idx = count(i->representable(fieldtype(structT, i)), 1:idx-1) + 1
+            proto = HloInstructionProto(comp, HloGetTupleElement(tuple_idx - 1),
+                hlo_eval(stmt.args[2]))
+            ssa_vals[stmt_idx] = proto
+            continue
+        end
+        if !isexpr(stmt, :invoke)
+            @Base.show stmt
+            Base.display(ir)
+            error("Unrecognized expr")
+        end
+        hlo_inst = stmt.args[2]
+        isa(hlo_inst, QuoteNode) && (hlo_inst = hlo_inst.value)
+        if isa(hlo_inst, HloOp)
+            args = map(hlo_eval, stmt.args[3:end])
+            proto = HloInstructionProto(comp, hlo_inst, args...)
+            if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce)
+                argtypes = Tuple{(XRTArray{eltype(argextype(stmt.args[i], ir, sv.sp)), (), 0} for i = 3:length(stmt.args))...}
+                @Base.show argtypes
+                global the_f = hlo_inst.f
+                ir′, sv′ = test_it(hlo_inst.f, argtypes)
+                comp′ = HloComputationProto(
+                    name = "comp$(length(computations))",
+                    instructions = HloInstructionProto[ ],
+                    id = length(computations)
+                )
+                pushfirst!(computations, comp′)
+                _compile_to_xla!(computations, comp′, ir′, sv′)
+                proto.called_computation_ids = [comp′.id]
+            end
+            ssa_vals[stmt_idx] = proto
+        elseif isa(hlo_inst, Type) && hlo_inst <: XRTArray
+            @assert isa(stmt.args[3], XLAScalar)
+            ssa_vals[stmt_idx] = HloInstructionProto(comp, HloConstant(stmt.args[3]))
         end
     end
     ret = ir.stmts[end]
     @assert isa(ret, ReturnNode)
     comp.root_id = hlo_eval(ret.val).id
+    xla_args
+end
+
+function compile_to_xla(ir, sv)
+    @assert length(ir.cfg.blocks) == 1
+    rt = argextype(ir.stmts[end].val, ir, sv.sp)
+    computations = HloComputationProto[]
+    comp = HloComputationProto(
+        name = "comp",
+        instructions = HloInstructionProto[ ],
+        id = 0
+    )
+    push!(computations, comp)
+    xla_args = _compile_to_xla!(computations, comp, ir, sv)
 
     pshape = ProgramShape(
-        parameters = collect(map(Shape, xla_args)),
+        parameters = collect(map(dtype_to_shape, xla_args)),
         result = Shape(rt)
     )
 
@@ -98,4 +157,27 @@ function compile_to_xla(ir, sv)
         hlo_snapshot = hlo_snap
     )
 
+end
+
+function representable(T)
+    return sizeof(T) != 0
+end
+
+dtype_to_shape(T::Type{<:XRTArray}) = convert(Shape, T)
+dtype_to_shape(T::Type{<:XLA.XLAScalar}) = dtype_to_shape(XRTArray{T, (), 0})
+function dtype_to_shape(T::DataType)
+    Shape(
+        element_type = xla.PrimitiveType.TUPLE,
+        tuple_shapes = collect(dtype_to_shape(fieldtype(T, i)) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
+    )
+end
+
+struct_to_literal(A::XRTArray) = convert(LiteralProto, convert(Array, A))
+struct_to_literal(x::XLA.XLAScalar) = struct_to_literal(XRTArray(x))
+function struct_to_literal(x)
+    T = typeof(x)
+    LiteralProto(
+        shape = dtype_to_shape(T),
+        tuple_literals = collect(struct_to_literal(getfield(x, i)) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
+    )
 end

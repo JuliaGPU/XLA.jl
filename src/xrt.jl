@@ -56,21 +56,71 @@ function Base.close(c::XRTAllocation)
     Core.setfield!(c, :h, -1)
 end
 
-struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
-    storage::XRTAllocation
-    function XRTArray{T, Dims, N}(sess, a::Array{T, N}) where {T, Dims, N}
-        @assert size(a) == Dims
-        @assert length(Dims) == N
-        new{T, Dims, N}(XRTAllocation(sess, convert(LiteralProto, a)))
+mutable struct XRTStorage{T, N}
+    localstorage::Union{Array{T, N}, Nothing}
+    remotestorage::Union{XRTAllocation, Nothing}
+    function XRTStorage{T, N}(a::Array{T, N}) where {T, N}
+        new{T, N}(a, nothing)
     end
-    function XRTArray{T, Dims, N}(h::XRTAllocation) where {T, Dims, N}
-        @assert length(Dims) == N
-        new{T, Dims, N}(h)
+    function XRTStorage{T, N}(a::XRTAllocation) where {T, N}
+        new{T, N}(nothing, a)
     end
 end
+
+struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
+    storage::XRTStorage{T, N}
+    @noinline function XRTArray{T, Dims, N}(a::Array{T, N}) where {T, Dims, N}
+        @assert size(a) == Dims
+        @assert length(Dims) == N
+        new{T, Dims, N}(XRTStorage{T, N}(a))
+    end
+    @noinline function XRTArray{T, (), 0}(a::T) where {T<:XLAScalar}
+        XRTArray{T, (), 0}(fill(a))
+    end
+    @noinline function XRTArray{T, Dims, N}(h::XRTAllocation) where {T, Dims, N}
+        @assert length(Dims) == N
+        new{T, Dims, N}(XRTStorage{T, N}(h))
+    end
+end
+
+function Base.convert(::Type{Array}, A::XRTArray)
+    if A.storage.localstorage !== nothing
+        return copy(A.storage.localstorage)
+    end
+    literal = run(A.storage.remotestorage.sess, TensorFlow.Ops.xrt_read_literal(A.storage.remotestorage.h))::String
+    A.storage.localstorage = convert(Array, readproto(IOBuffer(literal), LiteralProto()))
+    return copy(A.storage.localstorage)
+end
+
+function gethandle!(sess, A::XRTArray)
+    if A.storage.remotestorage !== nothing
+        @assert A.storage.remotestorage.sess === sess
+        return A.storage.remotestorage
+    end
+    A.storage.remotestorage = XRTAllocation(sess, convert(LiteralProto, A.storage.localstorage))
+    A.storage.remotestorage
+end
+
 const XRTMatrix{T, Dims} = XRTArray{T, Dims, 2} where {T, Dims}
 const XRTVector{T, Dims} = XRTArray{T, Dims, 1} where {T, Dims}
+XRTArray(A::AbstractArray) = XRTArray(collect(A)::Array)
+function XRTArray(a::Array{T}) where {T}
+    XRTArray{T, size(a), ndims(a)}(a)
+end
+function XRTArray(a::XLAScalar)
+    XRTArray{typeof(a), (), 0}(a)
+end
 XRTArray(sess, A::AbstractArray) = XRTArray(sess, collect(A)::Array)
+function XRTArray(sess, a::Array{T}) where {T}
+    ret = XRTArray{T, size(a), ndims(a)}(a)
+    gethandle!(sess, ret)
+    ret
+end
+
+Base.eltype(A::Type{<:XRTArray{T}}) where {T} = T
+Base.size(A::Type{<:XRTArray{T, Dims}} where T) where {Dims} = Dims
+Base.size(A::Type{<:XRTArray{T, Dims}} where T, i) where {Dims} = Dims[i]
+
 Base.eltype(A::XRTArray{T}) where {T} = T
 Base.size(A::XRTArray{T, Dims}) where {T, Dims} = Dims
 Base.size(A::XRTArray{T, Dims}, i) where {T, Dims} = Dims[i]
@@ -90,19 +140,12 @@ function Shape(::Type{XRTArray{T, Dims, N}} where N) where {T, Dims}
         )
     )
 end
+Base.convert(::Type{Shape}, AT::Type{XRTArray{T, Dims, N}} where N) where {T, Dims} =
+    Shape(AT)
 
 shape(A::XRTArray) = Shape(typeof(A))
 
 Base.isempty(A::XRTArray{T, Dims}) where {T, Dims} = prod(Dims) == 0
-
-function XRTArray(sess, a::Array{T}) where {T}
-    XRTArray{T, size(a), ndims(a)}(sess, a)
-end
-
-function Base.convert(::Type{Array}, A::XRTArray)
-    literal = run(A.storage.sess, TensorFlow.Ops.xrt_read_literal(A.storage.h))::String
-    convert(Array, readproto(IOBuffer(literal), LiteralProto()))
-end
 
 Base.print_array(io::IO, A::XRTArray) = Base.print_array(io, convert(Array, A))
 Base.show_vector(io::IO, A::XRTArray, opn='[', cls=']') =

@@ -11,7 +11,7 @@ function build_computation(op::HloOp, args::AnyXLA...)
         id = 0
     )
     root = HloInstructionProto(comp, op, map(i->(
-        HloInstructionProto(comp, HloParameter{eltype(args[i]), size(args[i])}(i-1))
+        HloInstructionProto(comp, HloParameter(eltype(args[i]), size(args[i]), i-1))
     ), 1:length(args))...)
     comp.root_id = root.id
     pshape = ProgramShape(
@@ -41,22 +41,28 @@ function build_computation(op::HloOp, args::AnyXLA...)
     )
 end
 
-
-function shape_infer(op::HloOp{opcode, T, Shape} where opcode, args::Type{<:AnyXLA}...) where {T, Shape}
-    return (T, Shape, length(Shape))
-end
-
 function Base.run(xrt::XRTCompilation, args::AnyXLA...)
-    run(xrt, map(a->a.storage, args)...)
+    run(xrt, map(a->gethandle!(xrt.sess, a), args)...)
 end
 
 function execute(op::HloOp, args::AnyXLA...)
-    xrt = XLA.compile(args[1].storage.sess, build_computation(op, args...))
-    run(xrt, args...)::XRTArray{shape_infer(op, map(typeof, args)...)...}
+    sess = nothing
+    for x in args
+        if x.storage.remotestorage !== nothing
+            sess = x.storage.remotestorage.sess
+            break
+        end
+    end
+    if sess === nothing
+        ret = emulate(op, args...)
+    else
+        xrt = XLA.compile(sess, build_computation(op, args...))
+        ret = run(xrt, args...)
+    end
+    ret::infer_rt(op, map(typeof, args)...)
 end
 
 @noinline (op::GenericHloOp)(args::AnyXLA...) = execute(op, args...)
-@noinline (op::HloCollapse)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloDot)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloReshape)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloBroadcast)(args::AnyXLA...) = execute(op, args...)

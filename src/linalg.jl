@@ -1,12 +1,23 @@
 function Base.:*(A::XRTArray, B::XRTArray)
     ddots = DimNums((1,), (0,), (), ())
-    HloDot{eltype(A), (size(A, 1), size(B, 2))}(ddots)(A, B)
+    HloDot(ddots)(A, B)
 end
 
 function Base.:*(A::XRTArray, B::XRTVector)
     ddots = DimNums((1,), (0,), (), ())
-    HloDot{eltype(A), (size(A, 1),)}(ddots)(A, B)
+    HloDot(ddots)(A, B)
 end
+
+# A couple of scalar embeddings (could use casette in the future)
+Base.:+(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+    GenericHloOp{:add}(T, ())(A, B)
+Base.:/(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+    GenericHloOp{:divide}(T, ())(A, B)
+Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
+Base.zero(A::XRTArray{<:Any, (), 0}) = zero(typeof(A))
+Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+    GenericHloOp{:maximum}(T, ())(A, B)
+Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
 
 import Base.Broadcast
 
@@ -14,28 +25,29 @@ struct XRTArrayStyle{N} <: Broadcast.AbstractArrayStyle{N} end
 (::Type{<:XRTArrayStyle})(::Val{N}) where {N} = XRTArrayStyle{N}()
 Broadcast.BroadcastStyle(::Type{<:XRTArray{<:Any,Dims,N}}) where {Dims, N} =
     XRTArrayStyle{N}()
-global cheat
 
 @noinline _ccdims(s) = tuple(findall(==(1), s)...)
-@noinline _ncdims(s) = tuple(findall(==(1), s)...)
+@noinline _ncdims(s) = tuple(findall(x->x!=(1), s)...)
 
 @Base.pure ccdims(s) = _ccdims(s)
 @Base.pure ncdims(s) = _ncdims(s)
+
+@Base.pure getindex_tuple(s::Tuple, k::Tuple) = s[collect(k)]
 
 @inline function broadcast_to_size(arg, rsize)
     if size(arg) != rsize
         collapse_dims = ccdims(size(arg))
         non_collapse_dims = ncdims(size(arg))
         if !isa(arg, XRTArray)
-            arg = XRTArray(cheat::TensorFlow.Session, fill(arg))
+            arg = XRTArray(fill(arg))
         end
         if collapse_dims != ()
-            let s = size(arg), nc = non_collapse_dims
-                arg = HloCollapse{eltype(arg), ntuple(i->s[nc[i]], length(nc))}(
-                    map(x->x - 1, collapse_dims))(arg)
-            end
+            arg = HloReshape(
+                dims_tuple(ndims(arg)),
+                getindex_tuple(size(arg), non_collapse_dims)
+            )(arg)
         end
-        return HloBroadcast{eltype(arg), rsize}(map(x->x - 1, non_collapse_dims))(
+        return HloBroadcast(map(x->x - 1, non_collapse_dims), rsize)(
             arg
         )
     else
@@ -52,12 +64,10 @@ function Broadcast.copy(bc::Broadcast.Broadcasted{<:XRTArrayStyle})
     bc′ = Broadcast.flatten(bc)
     if Base.isconcretetype(ElType)
         args = bc′.args
-        global cheat
-        cheat = any_sess(args...)::TensorFlow.Session
         # This could be axes(bc′) if we had better constant prop
         rsize = map(length, Broadcast.combine_axes(bc′.args...))
         args = map(arg->broadcast_to_size(arg, rsize), bc′.args)
-        return HloMap{ElType, rsize}(bc′.f)(args...)
+        return HloMap(bc′.f)(args...)
     end
     # TODO: Pull back CPU, do this there
     error("No hope")
@@ -78,24 +88,21 @@ function NNlib.conv(input::XRTArray, kernel::XRTArray; pad = 0, stride = 1, dila
         2, 3, (0, 1),
         3, 2, (0, 1)
     )
-    HloConv{eltype(input), NNlib.cdims(size(input), NNlib.dilation_dims(kernel, dilation), pad_, stride_)}(
-        windows, convdims)(input, kernel)
+    HloConv(windows, convdims)(input, kernel)
 end
 
 function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
     k_, pad_, stride_ = NNlib.padtuple(x, k),
                         NNlib.padtuple(x, pad),
                         NNlib.padtuple(x, stride)
-    windows = ntuple(length(k_)) do i
-        (sz, p, s) = k[i], pad[i], stride[i]
+    windows = ntuple(ndims(x)) do i
+        (sz, p, s) = i <= length(k) ? (k[i], pad[i], stride[i]) : (1, 0, 1)
         WindowDims(sz, s, p, p, 1, 1, false)
     end
-    rdims = NNlib.pdims(size(x), k, NNlib.expand(Val{length(k)}, pad),
-                NNlib.expand(Val{length(k)}, stride))
-    HloReduceWindow{eltype(x), rdims}(
+    HloReduceWindow(
         max,
         windows
-    )(x)
+    )(x, XRTArray(zero(eltype(x))))
 end
 
 NNlib.softmax(xs::XRTArray) = exp.(xs) ./ sum(exp.(xs))
@@ -104,22 +111,22 @@ NNlib.softmax(xs::XRTArray) = exp.(xs) ./ sum(exp.(xs))
 
 @inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Union{Int,Colon}}})
     dims = Base._reshape_uncolon(A, dims)
-    HloReshape{eltype(A), dims}(
+    HloReshape(
         dims_tuple(ndims(A)), dims
     )(A)
 end
 
-function Base.mapreduce(f, op, A::XRTArray; dims = :)
-    HloReduce{eltype(A), ()}(op, tuple((0:ndims(A)-1)...))(
-        HloMap{eltype(A), size(A)}(f)(A),
-        XRTArray(A.storage.sess, fill(zero(eltype(A))))
+function Base.mapreduce(f, op, A::XRTArray)
+    HloReduce(op, dims_tuple(ndims(A)))(
+        HloMap(f)(A),
+        XRTArray(zero(eltype(A)))
     )
 end
 
 using Flux
 
 function Flux.rand_similar(x::XRTArray{T, Shape}) where {T, Shape}
-    HloRng{T, Shape}(xla.RandomDistribution.RNG_UNIFORM)(
-        XRTArray(x.storage.sess, fill(zero(T))),
-        XRTArray(x.storage.sess, fill(one(T))))
+    HloRng(T, Shape, xla.RandomDistribution.RNG_UNIFORM)(
+        XRTArray(zero(T)),
+        XRTArray(one(T)))
 end

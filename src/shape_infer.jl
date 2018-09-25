@@ -94,6 +94,11 @@ function shape_infer(op::HloDot, lhs::Type{<:XRTArray}, rhs::Type{<:XRTArray})
     (eltype(lhs), compute_dot_dimensions(op, lhs, rhs))
 end
 
+function shape_infer(op::HloMap, args::Type{<:XRTArray}...)
+    shapes_match(args...) || error("Shape mismatch in HloMap")
+    (eltype(args[1]), size(args[1]))
+end
+
 function infer_rt(op::HloOp, args::Type{<:XRTArray}...)
     T, shape = shape_infer(op, args...)
     XRTArray{T, shape, length(shape)}

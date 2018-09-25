@@ -14,7 +14,9 @@ module XLA
     include("literal.jl")
     include("xrt.jl")
     include("hlo.jl")
+    include("shape_infer.jl")
     include("execute.jl")
+    include("emulate.jl")
     include("linalg.jl")
 
     regen_proto() = run(ProtoBuf.protoc(`-I=/home/keno/tensorflow/ --julia_out=gen /home/keno/tensorflow/tensorflow/compiler/xrt/xrt.proto`))

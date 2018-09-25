@@ -154,8 +154,12 @@ function refine_types!(ir, sv)
         f = Compiler.singleton_type(arg1t)
         f === nothing && continue
         if isa(f, Core.Builtin)
+            @Base.show f
+            @Base.show ir.argtypes
             argtypes = Any[Compiler.argextype(stmt.args[i], ir, sv.sp) for i in 2:length(stmt.args)]
+            @Base.show argtypes
             rt = Compiler.builtin_tfunction(f, argtypes, nothing, sv.params)
+            @Base.show rt
             ir.types[i] = rt
         end
     end

@@ -1,6 +1,12 @@
-abstract type HloOp{Opcode, T, Shape}; end
-opcode(op::HloOp{Opcode}) where {Opcode} = String(Opcode)
-shape(op::HloOp{<:Any, T, SHP}) where {T, SHP} = Shape(
+abstract type HloOp{Opcode}; end
+function opcode(op::HloOp{Opcode}) where {Opcode}
+    if Opcode == :reduceWindow
+        return "reduce-window"
+    end
+    String(Opcode)
+end
+
+xla.Shape(T::Type, SHP::Tuple) = Shape(
         element_type = convert(XlaType, T).which,
         dimensions = [SHP...],
         layout = Layout(
@@ -10,19 +16,37 @@ shape(op::HloOp{<:Any, T, SHP}) where {T, SHP} = Shape(
         )
     )
 
-struct HloParameter{T, Shape} <: HloOp{:parameter, T, Shape}
+function Base.convert(::Type{Type{<:XRTArray}}, s::Shape)
+    XRTArray{convert(Type, XlaType(s.element_type)),
+        tuple(s.dimensions...),
+        length(s.dimensions)}
+end
+
+struct HloTuple <: HloOp{:tuple}
+end
+fill_fields!(proto::HloInstructionProto, tup::HloTuple) = nothing
+
+struct GenericHloOp{Opcode} <: HloOp{Opcode}
+    T::Type
+    shape::Tuple
+end
+
+struct HloParameter <: HloOp{:parameter}
+    T::Type
+    shape::Tuple
     id::Int64
 end
 fill_fields!(proto::HloInstructionProto, p::HloParameter) = proto.parameter_number = p.id
 
-struct GenericHloOp{Opcode, T, Shape} <: HloOp{Opcode, T, Shape}; end
 fill_fields!(proto::HloInstructionProto, gen::GenericHloOp) = nothing
 
-struct HloConstant{T, Shape} <: HloOp{:constant, T, Shape}
+struct HloConstant <: HloOp{:constant}
+    T::Type
+    shape::Tuple
     value::LiteralProto
 end
-HloConstant(x::XLAScalar) = HloConstant{typeof(x), ()}(convert(LiteralProto, x))
-HloConstant(a::Array{<:XLAScalar}) = HloConstant{eltype(a), size(a)}(convert(LiteralProto, a))
+HloConstant(x::XLAScalar) = HloConstant(typeof(x), (), convert(LiteralProto, x))
+HloConstant(a::Array{<:XLAScalar}) = HloConstant(eltype(a), size(a), convert(LiteralProto, a))
 fill_fields!(proto::HloInstructionProto, c::HloConstant) = proto.literal = c.value
 
 # Equivalent to DotDimensionNumbers, but in a format the compiler has an
@@ -43,25 +67,25 @@ function Base.convert(::Type{DotDimensionNumbers}, dds::DimNums)
     )
 end
 
-struct HloDot{T, Shape} <: HloOp{:dot, T, Shape}
+struct HloDot <: HloOp{:dot}
     dims::DimNums
 end
 fill_fields!(proto::HloInstructionProto, d::HloDot) = proto.dot_dimension_numbers = convert(DotDimensionNumbers, d.dims)
 
 const SliceDimensions = HloInstructionProto_SliceDimensions
-struct HloSlice{T, Shape} <: HloOp{:slice, T, Shape}
+struct HloSlice <: HloOp{:slice}
     slice_dimensions::Vector{SliceDimensions}
 end
 fill_fields!(proto::HloInstructionProto, s::HloSlice) = proto.slice_dimensions = s.slice_dimensions
 
 # This opcode isn't really real - there's very little point to a map
 # unless we're able to compile it
-struct HloMap{T, Shape} <: HloOp{:map, T, Shape}
-    f
+struct HloMap{T} <: HloOp{:map}
+    f::T
 end
 fill_fields!(proto::HloInstructionProto, s::HloMap) = nothing
-function (m::HloMap)(args::XRTArray...)
-    XRTArray(args[1].storage.sess, map(m.f, map(x->convert(Array, x), args)...))::typeof(args[1])
+@noinline function (m::HloMap)(args::XRTArray...)
+    XRTArray(map(m.f, map(x->convert(Array, x), args)...))::typeof(args[1])
 end
 
 struct WindowDims
@@ -86,7 +110,7 @@ struct ConvDimNums{N1, N2, N3}
     output_spatial_dimensions::NTuple{N3, Int64}
 end
 
-struct HloConv{T, Shape} <: HloOp{:convolution, T, Shape}
+struct HloConv <: HloOp{:convolution}
     window::NTuple{N, WindowDims} where N
     dims::ConvDimNums
 end
@@ -119,18 +143,18 @@ function fill_fields!(proto::HloInstructionProto, d::HloConv)
     proto.convolution_dimension_numbers = xla.ConvolutionDimensionNumbers(d.dims)
 end
 
-struct HloReduceWindow{T, Shape} <: HloOp{:reduceWindow, T, Shape}
-    f
-    window::NTuple{N, WindowDims} where N
+struct HloReduceWindow{T, N} <: HloOp{Symbol("reduce-window")}
+    f::T
+    window::NTuple{N, WindowDims}
 end
 function fill_fields!(proto::HloInstructionProto, d::HloReduceWindow)
     window = xla.Window(dimensions = map(xla.WindowDimension, collect(d.window)))
     proto.window = window
 end
 
-struct HloReduce{T, Shape} <: HloOp{:reduce, T, Shape}
-    f
-    dims::NTuple{N, Int64} where N
+struct HloReduce{T, N} <: HloOp{:reduce}
+    f::T
+    dims::NTuple{N, Int64}
 end
 function fill_fields!(proto::HloInstructionProto, d::HloReduce)
     proto.dimensions = collect(Int64, d.dims)
@@ -138,36 +162,31 @@ end
 
 
 # Temporary to check all operations are defined
-function (m::HloReduceWindow{T, Shape})(arg::XRTArray) where {T, Shape}
-    x = XRTArray(arg.storage.sess, rand(T, Shape))
-    x::XRTArray{T, Shape}
+@noinline function (m::HloReduceWindow)(arg::XRTArray, init::XRTArray)
+    T, Shape = shape_infer(m, typeof(arg))
+    x = XRTArray(rand(T, Shape))
+    x::infer_rt(m, typeof(arg))
 end
 
-function (m::HloReduce{T, Shape})(arg::XRTArray, init::XRTArray) where {T, Shape}
-    x = XRTArray(arg.storage.sess, rand(T, Shape))
-    x::XRTArray{T, Shape}
+@noinline function (m::HloReduce)(arg::XRTArray, init::XRTArray)
+    T, Shape = shape_infer(m, typeof(arg), typeof(init))
+    x = XRTArray(rand(T, Shape))
+    x::infer_rt(m, typeof(arg), typeof(init))
 end
 
-struct HloReshape{T, Shape} <: HloOp{:reshape, T, Shape}
-    collapse_order::NTuple{N, Int} where N
-    result_shape::NTuple{N, Int} where N
+struct HloReshape{N1, N2} <: HloOp{:reshape}
+    collapse_order::NTuple{N1, Int}
+    result_shape::NTuple{N2, Int}
 end
 function fill_fields!(proto::HloInstructionProto, r::HloReshape)
     proto.dimensions = collect(r.collapse_order)
 end
 
-struct HloCollapse{T, Shape} <: HloOp{:reshape, T, Shape}
-    collapse_order::NTuple{N, Int} where N
-end
-function fill_fields!(proto::HloInstructionProto, r::HloCollapse)
-    proto.dimensions = collect(r.collapse_order)
-end
-
-struct HloBroadcast{T, Shape} <: HloOp{:broadcast, T, Shape}
-    dim_mappings::NTuple{N, Int} where N
+struct HloBroadcast{N1, N2} <: HloOp{:broadcast}
+    dim_mappings::NTuple{N1, Int}
+    result_shape::NTuple{N2, Int}
 end
 function fill_fields!(proto::HloInstructionProto, r::HloBroadcast)
-    # TODO: Where is the collapse order represented in the proto?
     proto.dimensions = collect(Int64, r.dim_mappings)
 end
 
@@ -176,24 +195,56 @@ struct Argument
     id::Int64
 end
 
-struct HloRng{T, Shape} <: HloOp{:rng, T, Shape}
+struct HloRng <: HloOp{:rng}
+    T::Type
+    shape::NTuple{N, Int} where N
     kind::Int
 end
 function fill_fields!(proto::HloInstructionProto, r::HloRng)
-    # TODO: Where is the collapse order represented in the proto?
     proto.distribution = Int32(r.kind)
 end
 
+struct HloGetTupleElement <: HloOp{Symbol("get-tuple-element")}
+    idx::Int
+end
+function fill_fields!(proto::HloInstructionProto, r::HloGetTupleElement)
+    proto.tuple_index = r.idx
+end
 
 let global_id = 0
     global make_id
     make_id() = (global_id += 1; global_id)
 end
 
+function HloInstructionProto(comp::HloComputationProto, opcode::String; id=length(comp.instructions), name=nothing)
+    proto = HloInstructionProto(
+        opcode=opcode,
+        id=id,
+        name=something(name, "comp$(comp.id)_$(opcode)$id")
+    )
+    push!(comp.instructions, proto)
+    proto
+end
+
 function HloInstructionProto(op::HloOp, operands::Union{Argument, HloInstructionProto}...; id=make_id(), name="$(opcode(op))$id")
+    if isa(op, HloGetTupleElement)
+        xshape = operands[1].shape.tuple_shapes[op.idx+1]
+    elseif isa(op, HloTuple)
+        xshape = Shape(
+            element_type = xla.PrimitiveType.TUPLE,
+            tuple_shapes = collect(op.shape for op in operands)
+        )
+    else
+        T, shape = shape_infer(op,
+            map(operands) do op
+                convert(Type{<:XRTArray}, op.shape)
+            end...
+        )
+        xshape = Shape(T, shape)
+    end
     proto = HloInstructionProto(
         opcode = opcode(op),
-        shape = shape(op),
+        shape = xshape,
         id = id,
         name = name,
         operand_ids = collect(map(x->x.id, operands))
