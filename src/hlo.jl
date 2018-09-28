@@ -174,13 +174,10 @@ end
     x::infer_rt(m, typeof(arg), typeof(init))
 end
 
-struct HloReshape{N1, N2} <: HloOp{:reshape}
-    collapse_order::NTuple{N1, Int}
-    result_shape::NTuple{N2, Int}
+struct HloReshape{N} <: HloOp{:reshape}
+    result_shape::NTuple{N, Int}
 end
-function fill_fields!(proto::HloInstructionProto, r::HloReshape)
-    proto.dimensions = collect(r.collapse_order)
-end
+fill_fields!(proto::HloInstructionProto, r::HloReshape) = nothing
 
 struct HloBroadcast{N1, N2} <: HloOp{:broadcast}
     dim_mappings::NTuple{N1, Int}

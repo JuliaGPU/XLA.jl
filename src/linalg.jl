@@ -48,7 +48,6 @@ Broadcast.BroadcastStyle(::Type{<:XRTArray{<:Any,Dims,N}}) where {Dims, N} =
         end
         if collapse_dims != ()
             arg = HloReshape(
-                dims_tuple(ndims(arg)),
                 getindex_tuple(size(arg), non_collapse_dims)
             )(arg)
         end
@@ -86,7 +85,7 @@ function NNlib.conv(input::XRTArray, kernel::XRTArray; pad = 0, stride = 1, dila
     sz_ = size(kernel)
     windows = ntuple(length(pad_)) do i
         (sz, p, s, d) = sz_[i], pad_[i], stride_[i], dilation_[i]
-        WindowDims(sz, s, p, p, d, 1, false)
+        WindowDims(sz, s, p, p, d, 1, true)
     end
     convdims = ConvDimNums(
         3, 2, (0, 1),
@@ -127,21 +126,24 @@ function NNlib.∇softmax(Δ, xs::XRTArray)
 end
 
 @Base.pure dims_tuple(n) = tuple((0:n-1)...)
+@Base.pure rev_dims_tuple(n) = tuple((n-1:-1:0)...)
 dims_tuple(A, ::Colon) = dims_tuple(ndims(A))
 dims_tuple(A, t::Tuple) = t
 dims_tuple(A, n::Int) = (n,)
 
 @inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Union{Int,Colon}}})
     dims = Base._reshape_uncolon(A, dims)
-    HloReshape(
-        dims_tuple(ndims(A)), dims
-    )(A)
+    HloReshape(dims)(
+        # HLO reshape semantics collapse the opposite way
+        HloTranspose(rev_dims_tuple(ndims(A)))(A)
+    )
 end
 
 @inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Int}})
-    HloReshape(
-        dims_tuple(ndims(A)), dims
-    )(A)
+    HloReshape(dims)(
+        # HLO reshape semantics collapse the opposite way
+        HloTranspose(rev_dims_tuple(ndims(A)))(A)
+    )
 end
 
 function Base.mapreduce(f, op, A::XRTArray; dims=:)
