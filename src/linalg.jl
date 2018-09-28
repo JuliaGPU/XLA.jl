@@ -19,7 +19,12 @@ Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
 Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
 
+Base.transpose(A::XRTArray) = HloTranspose((1,0))(A)
+Base.permutedims(A::XRTArray, perm) = HloTranspose(map(x->x-1, perm))(A)
+
 import Base.Broadcast
+
+Base.similar(x::XRTArray) = error()
 
 struct XRTArrayStyle{N} <: Broadcast.AbstractArrayStyle{N} end
 (::Type{<:XRTArrayStyle})(::Val{N}) where {N} = XRTArrayStyle{N}()
@@ -91,7 +96,7 @@ function NNlib.conv(input::XRTArray, kernel::XRTArray; pad = 0, stride = 1, dila
     HloConv(windows, convdims)(input, kernel)
 end
 
-function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
+function make_maxpool_windows(x, k, pad, stride)
     k_, pad_, stride_ = NNlib.padtuple(x, k),
                         NNlib.padtuple(x, pad),
                         NNlib.padtuple(x, stride)
@@ -99,15 +104,32 @@ function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
         (sz, p, s) = i <= length(k) ? (k[i], pad[i], stride[i]) : (1, 0, 1)
         WindowDims(sz, s, p, p, 1, 1, false)
     end
+end
+
+function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
     HloReduceWindow(
         max,
-        windows
-    )(x, XRTArray(zero(eltype(x))))
+        make_maxpool_windows(x, k, pad, stride)
+    )(x, XRTArray(typemin(eltype(x))))
+end
+
+function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
+    HloSelectAndScatter2(
+        >=, +,
+        make_maxpool_windows(x, k, pad, stride)
+    )(x, dy, XRTArray(zero(eltype(x))))
 end
 
 NNlib.softmax(xs::XRTArray) = exp.(xs) ./ sum(exp.(xs))
+function NNlib.∇softmax(Δ, xs::XRTArray)
+    s = sum(exp, xs, dims=1)
+    exp.(xs)./s.*(Δ .- sum(Δ .* exp.(xs), dims=1)./s)
+end
 
 @Base.pure dims_tuple(n) = tuple((0:n-1)...)
+dims_tuple(A, ::Colon) = dims_tuple(ndims(A))
+dims_tuple(A, t::Tuple) = t
+dims_tuple(A, n::Int) = (n,)
 
 @inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Union{Int,Colon}}})
     dims = Base._reshape_uncolon(A, dims)
@@ -116,8 +138,14 @@ NNlib.softmax(xs::XRTArray) = exp.(xs) ./ sum(exp.(xs))
     )(A)
 end
 
-function Base.mapreduce(f, op, A::XRTArray)
-    HloReduce(op, dims_tuple(ndims(A)))(
+@inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Int}})
+    HloReshape(
+        dims_tuple(ndims(A)), dims
+    )(A)
+end
+
+function Base.mapreduce(f, op, A::XRTArray; dims=:)
+    HloReduce(op, dims_tuple(A, dims))(
         HloMap(f)(A),
         XRTArray(zero(eltype(A)))
     )

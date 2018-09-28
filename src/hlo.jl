@@ -190,6 +190,28 @@ function fill_fields!(proto::HloInstructionProto, r::HloBroadcast)
     proto.dimensions = collect(Int64, r.dim_mappings)
 end
 
+struct HloTranspose{N} <: HloOp{:transpose}
+    permutation::NTuple{N, Int}
+end
+function fill_fields!(proto::HloInstructionProto, r::HloTranspose)
+    proto.dimensions = collect(Int64, r.permutation)
+end
+
+struct HloSelectAndScatter2{T, S, N} <: HloOp{Symbol("select-and-scatter")}
+    select::T
+    scatter::S
+    window::NTuple{N, WindowDims}
+end
+function fill_fields!(proto::HloInstructionProto, r::HloSelectAndScatter2)
+    window = xla.Window(dimensions = map(xla.WindowDimension, collect(d.window)))
+    proto.window = window
+end
+@noinline function (m::HloSelectAndScatter2)(op::XRTArray, source::XRTArray, init::XRTArray)
+    T, Shape = shape_infer(m, typeof(op), typeof(source), typeof(init))
+    x = XRTArray(rand(T, Shape))
+    x::infer_rt(m, typeof(op), typeof(source), typeof(init))
+end
+
 struct Argument
     shape::Shape
     id::Int64

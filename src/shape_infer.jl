@@ -99,6 +99,17 @@ function shape_infer(op::HloMap, args::Type{<:XRTArray}...)
     (eltype(args[1]), size(args[1]))
 end
 
+@Base.pure transpose_dims(dims, permutation) = dims[collect(map(x->x+1, permutation))]
+
+function shape_infer(op::HloTranspose, args::Type{<:XRTArray}...)
+    shapes_match(args...) || error("Shape mismatch in HloMap")
+    (eltype(args[1]), transpose_dims(size(args[1]), op.permutation))
+end
+
+function shape_infer(op::HloSelectAndScatter2, args::Type{<:XRTArray}...)
+    (eltype(args[1]), size(args[1]))
+end
+
 function infer_rt(op::HloOp, args::Type{<:XRTArray}...)
     T, shape = shape_infer(op, args...)
     XRTArray{T, shape, length(shape)}

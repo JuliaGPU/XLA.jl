@@ -119,23 +119,24 @@ end
 
 Base.eltype(A::Type{<:XRTArray{T}}) where {T} = T
 Base.size(A::Type{<:XRTArray{T, Dims}} where T) where {Dims} = Dims
-Base.size(A::Type{<:XRTArray{T, Dims}} where T, i) where {Dims} = Dims[i]
+Base.size(A::Type{<:XRTArray{T, Dims}} where T, i) where {Dims} = i <= length(Dims) ? Dims[i] : 1
 
 Base.eltype(A::XRTArray{T}) where {T} = T
 Base.size(A::XRTArray{T, Dims}) where {T, Dims} = Dims
-Base.size(A::XRTArray{T, Dims}, i) where {T, Dims} = Dims[i]
+Base.size(A::XRTArray{T, Dims}, i) where {T, Dims} = i <= length(Dims) ? Dims[i] : 1
 @inline function Base.axes(A::XRTArray{<:Any, Dims}, d) where {Dims}
     d <= length(Dims) ? axes(A)[d] : Base.OneTo(1)
 end
 
 import .xla: Shape
 function Shape(::Type{XRTArray{T, Dims, N}} where N) where {T, Dims}
+    perm = sortperm(collect(Dims); rev=true)
     Shape(
         element_type = convert(XlaType, T).which,
         dimensions = Int64[Dims...],
         layout = Layout(
             format = Format.DENSE,
-            minor_to_major=collect(0:(length(Dims)-1)),
+            minor_to_major = collect(0:(length(Dims)-1))[perm],
             max_sparse_elements = 0
         )
     )

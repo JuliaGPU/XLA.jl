@@ -38,9 +38,9 @@ version = "0.8.10"
 
 [[BinaryProvider]]
 deps = ["Libdl", "Pkg", "SHA", "Test"]
-git-tree-sha1 = "b530fbeb6f41ab5a83fbe3db1fcbe879334bcd2d"
+git-tree-sha1 = "48c147e63431adbcee69bc40b04c3f0fec0a4982"
 uuid = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
-version = "0.4.2"
+version = "0.5.0"
 
 [[CodecZlib]]
 deps = ["BinaryProvider", "Libdl", "Pkg", "Test", "TranscodingStreams"]
@@ -74,15 +74,15 @@ version = "1.1.0"
 
 [[Conda]]
 deps = ["Compat", "JSON", "VersionParsing"]
-git-tree-sha1 = "a47f9a2c7b80095e6a935536795635522fe27f5d"
+git-tree-sha1 = "85b5bf3ffcf4f39abe019dab1dd00a0aead8d882"
 uuid = "8f4d0f93-b110-5947-807f-2305c1781a2d"
-version = "1.0.1"
+version = "1.0.2"
 
 [[DataStructures]]
-deps = ["InteractiveUtils", "REPL", "Random", "Serialization", "Test"]
-git-tree-sha1 = "5162c360c52e9265e0bfafb71415c31f746f7e04"
+deps = ["InteractiveUtils", "OrderedCollections", "REPL", "Random", "Serialization", "Test"]
+git-tree-sha1 = "8fc6e166e24fda04b2b648d4260cdad241788c54"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
-version = "0.12.0"
+version = "0.14.0"
 
 [[Dates]]
 deps = ["Printf"]
@@ -150,11 +150,22 @@ git-tree-sha1 = "e3ead4211073d4117a0d2ef7d1efc5c8092c8412"
 uuid = "a2bd30eb-e257-5431-a919-1863eab51364"
 version = "0.4.0"
 
+[[IRTools]]
+deps = ["InteractiveUtils", "MacroTools", "Test"]
+git-tree-sha1 = "5d3f123ff32a2aed5825ee2eef03ef7e95406b6e"
+uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
+version = "0.1.1"
+[[IRTools]]
+deps = ["InteractiveUtils", "MacroTools", "Test"]
+path = "/home/keno/.julia/dev/IRTools"
+uuid = "71c1cb0c-a83f-11e8-19ce-a5dd18e12d22"
+version = "0.1.0"
+
 [[ImageCore]]
 deps = ["ColorTypes", "Colors", "FFTW", "FixedPointNumbers", "Graphics", "MappedArrays", "OffsetArrays", "PaddedViews", "Pkg", "Random", "Statistics", "Test"]
-git-tree-sha1 = "2b4e3847ef8c1f9a8904c89a66b4b9331d93fbce"
+git-tree-sha1 = "5e7b1f49c80541860e08a7ea91805a24c1641f19"
 uuid = "a09fc81d-aa75-5fe9-8630-4744c3626534"
-version = "0.7.2"
+version = "0.7.3"
 
 [[ImageMagick]]
 deps = ["BinaryProvider", "ColorTypes", "FileIO", "FixedPointNumbers", "ImageCore", "InteractiveUtils", "Libdl", "Pkg", "Random", "Test"]
@@ -197,12 +208,6 @@ uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 [[Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 
-[[MNIST]]
-deps = ["Compat"]
-git-tree-sha1 = "68376eb8aa93971f56d3e5ec11f03c3c9f0a4541"
-uuid = "d4533929-f99c-5db4-a653-da41d2ba215b"
-version = "0.0.2"
-
 [[MacroTools]]
 deps = ["Compat"]
 git-tree-sha1 = "c443e1c8d58a4e9f61b708ad0a88286c7042145b"
@@ -227,9 +232,9 @@ version = "0.4.1"
 
 [[Missings]]
 deps = ["Dates", "InteractiveUtils", "SparseArrays", "Test"]
-git-tree-sha1 = "196528fa1df03df435025f52f9c1ff8356f94738"
+git-tree-sha1 = "adc26d2ee85a49c413464110d922cf21efc9d233"
 uuid = "e1d29d7a-bbdc-5cf2-9ac0-f12de2c33e28"
-version = "0.3.0"
+version = "0.3.1"
 
 [[Mmap]]
 uuid = "a63ad114-7e13-5084-954f-fe012c677804"
@@ -257,6 +262,12 @@ deps = ["DelimitedFiles", "Test"]
 git-tree-sha1 = "f8cd140824f74f2948ff8660bc2292e16d29c1b7"
 uuid = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
 version = "0.8.1"
+
+[[OrderedCollections]]
+deps = ["Pkg", "Random", "Serialization", "Test"]
+git-tree-sha1 = "41da1edba028376b58520ca01d9a41e29f855d55"
+uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+version = "1.0.1"
 
 [[PDMats]]
 deps = ["Arpack", "LinearAlgebra", "SparseArrays", "SuiteSparse", "Test"]
@@ -350,10 +361,10 @@ deps = ["LinearAlgebra", "Random"]
 uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [[SpecialFunctions]]
-deps = ["BinDeps", "BinaryProvider", "Compat", "Libdl"]
-git-tree-sha1 = "d12f8917be3782f4b800ba16003b8d0d4858c2e5"
+deps = ["BinDeps", "BinaryProvider", "Libdl", "Test"]
+git-tree-sha1 = "c35c9c76008babf4d658060fc64aeb369a41e7bd"
 uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
-version = "0.7.0"
+version = "0.7.1"
 
 [[StaticArrays]]
 deps = ["InteractiveUtils", "LinearAlgebra", "Random", "Statistics", "Test"]
@@ -382,10 +393,10 @@ deps = ["Libdl", "LinearAlgebra", "SparseArrays"]
 uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[TensorFlow]]
-deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MNIST", "MacroTools", "Nullables", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
+deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MacroTools", "Nullables", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
 path = "/home/keno/.julia/dev/TensorFlow"
 uuid = "1d978283-2c37-5f34-9a8e-e9c0ece82495"
-version = "0.10.1+"
+version = "0.10.2+"
 
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
@@ -414,10 +425,28 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 deps = ["Compat"]
 git-tree-sha1 = "c9d5aa108588b978bd859554660c8a5c4f2f7669"
 uuid = "81def892-9a0e-5fdd-b105-ffc91e053289"
-version = "1.1.2"
+version = "1.1.3"
 
 [[ZipFile]]
 deps = ["Printf", "Test"]
 git-tree-sha1 = "c191e56c849b1784cacbf7cd5e52cc672f1ae2db"
 uuid = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
 version = "0.7.0"
+
+[[Zygote]]
+path = "/home/keno/.julia/dev/Zygote"
+uuid = "e88e6eb3-aa80-5325-afca-941959d7151f"
+version = "0.1.0+"
+
+    [Zygote.deps]
+    DiffRules = "b552c78f-8df3-52c6-915a-8e097449b14b"
+    ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+    IRTools = "7869d1d1-7146-5819-86e3-90919afe41df"
+    InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+    MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+    NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
+    NaNMath = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
+    Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+    Requires = "ae029012-a4dd-5104-9daa-d747884805df"
+    SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+    Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
