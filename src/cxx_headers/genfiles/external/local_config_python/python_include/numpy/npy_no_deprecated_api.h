@@ -1,1 +1,0 @@
-/usr/include/python3.6m/numpy/npy_no_deprecated_api.h
