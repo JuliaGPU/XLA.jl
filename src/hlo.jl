@@ -6,16 +6,6 @@ function opcode(op::HloOp{Opcode}) where {Opcode}
     String(Opcode)
 end
 
-xla.Shape(T::Type, SHP::Tuple) = Shape(
-        element_type = convert(XlaType, T).which,
-        dimensions = [SHP...],
-        layout = Layout(
-            format = Format.DENSE,
-            minor_to_major=collect(0:(length(SHP)-1)),
-            max_sparse_elements = 0
-        )
-    )
-
 function Base.convert(::Type{Type{<:XRTArray}}, s::Shape)
     XRTArray{convert(Type, XlaType(s.element_type)),
         tuple(s.dimensions...),
@@ -192,6 +182,13 @@ struct HloTranspose{N} <: HloOp{:transpose}
 end
 function fill_fields!(proto::HloInstructionProto, r::HloTranspose)
     proto.dimensions = collect(Int64, r.permutation)
+end
+
+struct HloRev{N} <: HloOp{Symbol("reverse")}
+    dims::NTuple{N, Int}
+end
+function fill_fields!(proto::HloInstructionProto, r::HloRev)
+    proto.dimensions = collect(r.dims)
 end
 
 struct HloSelectAndScatter2{T, S, N} <: HloOp{Symbol("select-and-scatter")}

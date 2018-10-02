@@ -70,3 +70,5 @@ end
 @noinline (op::HloSlice)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloRng)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloTranspose)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloRev)(args::AnyXLA...) = execute(op, args...)
+

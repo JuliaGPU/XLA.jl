@@ -152,14 +152,14 @@ version = "0.4.0"
 
 [[IRTools]]
 deps = ["InteractiveUtils", "MacroTools", "Test"]
-git-tree-sha1 = "5d3f123ff32a2aed5825ee2eef03ef7e95406b6e"
-uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
-version = "0.1.1"
-[[IRTools]]
-deps = ["InteractiveUtils", "MacroTools", "Test"]
 path = "/home/keno/.julia/dev/IRTools"
 uuid = "71c1cb0c-a83f-11e8-19ce-a5dd18e12d22"
 version = "0.1.0"
+[[IRTools]]
+deps = ["InteractiveUtils", "MacroTools", "Test"]
+git-tree-sha1 = "5d3f123ff32a2aed5825ee2eef03ef7e95406b6e"
+uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
+version = "0.1.1"
 
 [[ImageCore]]
 deps = ["ColorTypes", "Colors", "FFTW", "FixedPointNumbers", "Graphics", "MappedArrays", "OffsetArrays", "PaddedViews", "Pkg", "Random", "Statistics", "Test"]
@@ -265,9 +265,9 @@ version = "0.8.1"
 
 [[OrderedCollections]]
 deps = ["Pkg", "Random", "Serialization", "Test"]
-git-tree-sha1 = "41da1edba028376b58520ca01d9a41e29f855d55"
+git-tree-sha1 = "85619a3f3e17bb4761fe1b1fd47f0e979f964d5b"
 uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
-version = "1.0.1"
+version = "1.0.2"
 
 [[PDMats]]
 deps = ["Arpack", "LinearAlgebra", "SparseArrays", "SuiteSparse", "Test"]

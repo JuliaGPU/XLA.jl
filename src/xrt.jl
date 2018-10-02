@@ -130,17 +130,22 @@ end
 
 import .xla: Shape
 function Shape(::Type{XRTArray{T, Dims, N}} where N) where {T, Dims}
-    perm = sortperm(collect(Dims); rev=true)
+    Shape(T, Dims)
+end
+Shape(T::Type, SHP::Tuple) = Shape(convert(XlaType, T), SHP)
+function Shape(XLAT::XlaType, SHP::Tuple)
+    perm = sortperm(collect(SHP); rev=true)
     Shape(
-        element_type = convert(XlaType, T).which,
-        dimensions = Int64[Dims...],
+        element_type = XLAT.which,
+        dimensions = Int64[SHP...],
         layout = Layout(
             format = Format.DENSE,
-            minor_to_major = collect(0:(length(Dims)-1))[perm],
+            minor_to_major = collect(0:(length(SHP)-1))[perm],
             max_sparse_elements = 0
         )
     )
 end
+
 Base.convert(::Type{Shape}, AT::Type{XRTArray{T, Dims, N}} where N) where {T, Dims} =
     Shape(AT)
 

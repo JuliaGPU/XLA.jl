@@ -22,7 +22,7 @@ function shape_infer(op::Union{HloBroadcast, HloReshape},
     (eltype(args[1]), op.result_shape)
 end
 
-@Base.pure drop_reduce_dims(shape, dims) = tuple((shape[i] for (i, x) in enumerate(dims) if !(x in dims))...)
+@Base.pure drop_reduce_dims(shape, dims) = tuple((shape[i] for i in 1:length(shape) if !(i-1 in dims))...)
 
 function shape_infer(op::HloReduce,
                      args::Type{<:XRTArray}...)
@@ -108,6 +108,10 @@ end
 
 function shape_infer(op::HloSelectAndScatter2, args::Type{<:XRTArray}...)
     (eltype(args[1]), size(args[1]))
+end
+
+function shape_infer(op::HloRev, A::Type{<:XRTArray})
+    (eltype(A), size(A))
 end
 
 function infer_rt(op::HloOp, args::Type{<:XRTArray}...)
