@@ -111,6 +111,7 @@ function XRTArray(a::XLAScalar)
     XRTArray{typeof(a), (), 0}(a)
 end
 XRTArray(sess, A::AbstractArray) = XRTArray(sess, collect(A)::Array)
+XRTArray(sess, a::XLAScalar) = XRTArray(sess, fill(a))
 function XRTArray(sess, a::Array{T}) where {T}
     ret = XRTArray{T, size(a), ndims(a)}(a)
     gethandle!(sess, ret)
