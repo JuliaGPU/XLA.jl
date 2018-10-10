@@ -1,5 +1,7 @@
-using .Compiler: ReturnNode, argextype, Argument, SSAValue, ⊑, widenconst
-using XLA: HloParameter, HloOp, XLAComputationConfig, HloModuleProto, HloProto,
+const Compiler = Core.Compiler
+using .Compiler: ReturnNode, argextype, SSAValue, ⊑, widenconst
+using InteractiveUtils
+using ..XLA: HloParameter, HloOp, XLAComputationConfig, HloModuleProto, HloProto,
     HloSnapshot, XLAComputation, HloMap, HloGetTupleElement, XLAScalar,
     HloReduceWindow, HloReduce, HloTuple
 
@@ -48,7 +50,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
     ssa_vals = Vector{HloInstructionProto}(undef, length(ir.stmts))
     function hlo_eval(arg)
         @show arg
-        if isa(arg, Argument)
+        if isa(arg, Compiler.Argument)
             @Base.show arg_instrs[arg.n].parameter_number
             return arg_instrs[arg.n]
         elseif isa(arg, SSAValue)
@@ -96,7 +98,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 argtypes = Tuple{(XRTArray{eltype(argextype(stmt.args[i], ir, sv.sp)), (), 0} for i = 3:length(stmt.args))...}
                 @Base.show argtypes
                 global the_f = hlo_inst.f
-                ir′, sv′ = test_it(hlo_inst.f, argtypes)
+                ir′, sv′ = code_typed_xla(hlo_inst.f, argtypes)
                 comp′ = HloComputationProto(
                     name = "comp$(length(computations))",
                     instructions = HloInstructionProto[ ],

@@ -232,7 +232,7 @@ let global_id = 0
     make_id() = (global_id += 1; global_id)
 end
 
-function HloInstructionProto(comp::HloComputationProto, opcode::String; id=length(comp.instructions), name=nothing)
+function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_id(), name=nothing)
     proto = HloInstructionProto(
         opcode=opcode,
         id=id,
@@ -269,7 +269,7 @@ function HloInstructionProto(op::HloOp, operands::Union{Argument, HloInstruction
     proto
 end
 
-function HloInstructionProto(comp::HloComputationProto, op::HloOp, args...; id=length(comp.instructions), name=nothing)
+function HloInstructionProto(comp::HloComputationProto, op::HloOp, args...; id=make_id(), name=nothing)
     proto = HloInstructionProto(op, args...; id=id, name=something(name, "comp$(comp.id)_$(opcode(op))$id"))
     push!(comp.instructions, proto)
     proto
