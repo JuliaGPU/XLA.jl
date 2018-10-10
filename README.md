@@ -9,7 +9,7 @@ WARNING: This is extremely ugly code. Use for demo only ;).
 ```
 pkg> dev TensorFlow
 ```
-- Follow the instructions at https://www.tensorflow.org/install/source up until (but not including) the `bazel build step` (tensorflow version is up to you, but master often fails. `r1.12` seems to work fine at the moment)
+- Follow the instructions at https://www.tensorflow.org/install/source up until (but not including) the `bazel build step` (tensorflow version is up to you, but master often fails - `eaebeb1d4d939fb9fd0b75e32a76151cb517bfb6` seems ok at the moment)
 - Apply the following patch to tensorflow (the repo you cloned in the previous step, not the
 julia wrapper):
 ```
