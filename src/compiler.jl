@@ -60,8 +60,12 @@ function _compile_to_xla!(computations, comp, ir, sv)
         end
     end
     for (stmt_idx, stmt) in pairs(ir.stmts)
-        isexpr(stmt, :new) && continue
         isa(stmt, ReturnNode) && continue
+        if isexpr(stmt, :new) || (isexpr(stmt, :call) && Compiler.is_known_call(stmt, tuple, ir, sv.sp))
+            @Base.show stmt_idx
+            ssa_vals[stmt_idx] = HloInstructionProto(comp, HloTuple(), map(hlo_eval, filter(x->x!=nothing, stmt.args[2:end]))...)
+            continue
+        end
         if isexpr(stmt, :call) && Compiler.is_known_call(stmt, getfield, ir, sv.sp)
             structT = widenconst(argextype(stmt.args[2], ir, sv.sp))
             elt = argextype(stmt.args[3], ir, sv.sp)
@@ -84,6 +88,9 @@ function _compile_to_xla!(computations, comp, ir, sv)
             ssa_vals[stmt_idx] = proto
             continue
         end
+        if isa(stmt, GlobalRef) && isa(argextype(stmt, ir, sv.sp), Const)
+            continue
+        end
         if !isexpr(stmt, :invoke)
             @Base.show stmt
             Base.display(ir)
@@ -92,13 +99,25 @@ function _compile_to_xla!(computations, comp, ir, sv)
         hlo_inst = stmt.args[2]
         isa(hlo_inst, QuoteNode) && (hlo_inst = hlo_inst.value)
         if isa(hlo_inst, HloOp)
-            args = map(hlo_eval, stmt.args[3:end])
-            proto = HloInstructionProto(comp, hlo_inst, args...)
             if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce)
-                argtypes = Tuple{(XRTArray{eltype(argextype(stmt.args[i], ir, sv.sp)), (), 0} for i = 3:length(stmt.args))...}
-                @Base.show argtypes
-                global the_f = hlo_inst.f
-                ir′, sv′ = code_typed_xla(hlo_inst.f, argtypes)
+                args = map(hlo_eval, stmt.args[4:end])
+                proto = HloInstructionProto(comp, hlo_inst, args...)
+                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[i], ir, sv.sp)), (), 0} for i = 4:length(stmt.args))...}
+                argvals = nothing
+                if sizeof(sig.parameters[1]) != 0
+                    # If the function being called has non-zero information, we need to make sure it's a constant
+                    # In the future, XLA will allow this.
+                    fty = argextype(stmt.args[3], ir, sv.sp)
+                    if !isa(fty, Const)
+                        error("At the moment applied computations must not capture non-constant values")
+                    end
+                    argvals = Vector{Any}(undef, 1)
+                    argvals[1] = fty.val
+                end
+                ir′, sv′ = code_typed_xla(sig; argvals=argvals)
+                if sizeof(sig.parameters[1]) != 0
+                    ir′.argtypes[1] = fty
+                end
                 comp′ = HloComputationProto(
                     name = "comp$(length(computations))",
                     instructions = HloInstructionProto[ ],
@@ -107,6 +126,9 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 pushfirst!(computations, comp′)
                 _compile_to_xla!(computations, comp′, ir′, sv′)
                 proto.called_computation_ids = [comp′.id]
+            else
+                args = map(hlo_eval, stmt.args[3:end])
+                proto = HloInstructionProto(comp, hlo_inst, args...)
             end
             ssa_vals[stmt_idx] = proto
         elseif isa(hlo_inst, Type) && hlo_inst <: XRTArray
@@ -134,7 +156,7 @@ function compile_to_xla(ir, sv)
 
     pshape = ProgramShape(
         parameters = collect(map(dtype_to_shape, xla_args)),
-        result = Shape(rt)
+        result = dtype_to_shape(rt)
     )
 
     config = XLAComputationConfig(

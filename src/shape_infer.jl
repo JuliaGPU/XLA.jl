@@ -24,8 +24,8 @@ end
 
 @Base.pure drop_reduce_dims(shape, dims) = tuple((shape[i] for i in 1:length(shape) if !(i-1 in dims))...)
 
-function shape_infer(op::HloReduce,
-                     args::Type{<:XRTArray}...)
+function shape_infer(op::HloReduce{fT}, ::Type{<:fT},
+                     args::Type{<:XRTArray}...) where {fT}
     # For now, restrict to a single reduction array
     @assert length(args) == 2
     shapes_match(args[1:div(length(args), 2)]...) || error("shape mismatch in $(typeof(op))")
@@ -49,8 +49,8 @@ function infer_window_output_shape(base_shape, windows)
     end
 end
 
-function shape_infer(op::HloReduceWindow,
-                     args::Type{<:XRTArray}...)
+function shape_infer(op::HloReduceWindow{fT}, ::Type{<:fT},
+                     args::Type{<:XRTArray}...) where {fT}
     # For now, assume reductions preserve type
     (eltype(args[1]), infer_window_output_shape(size(args[1]), op.window))
 end
@@ -94,12 +94,12 @@ function shape_infer(op::HloDot, lhs::Type{<:XRTArray}, rhs::Type{<:XRTArray})
     (eltype(lhs), compute_dot_dimensions(op, lhs, rhs))
 end
 
-function shape_infer(op::HloMap, args::Type{<:XRTArray}...)
+function shape_infer(op::HloMap{fT}, ::Type{<:fT}, args::Type{<:XRTArray}...) where fT
     shapes_match(args...) || error("Shape mismatch in HloMap")
     (eltype(args[1]), size(args[1]))
 end
 
-@Base.pure transpose_dims(dims, permutation) = dims[collect(map(x->x+1, permutation))]
+@Base.pure transpose_dims(dims, permutation) = map(x->(x + 1) > length(dims) ? 1 : dims[x + 1], permutation)
 
 function shape_infer(op::HloTranspose, args::Type{<:XRTArray}...)
     shapes_match(args...) || error("Shape mismatch in HloMap")
@@ -114,7 +114,7 @@ function shape_infer(op::HloRev, A::Type{<:XRTArray})
     (eltype(A), size(A))
 end
 
-function infer_rt(op::HloOp, args::Type{<:XRTArray}...)
+function infer_rt(op::HloOp, args::Type...)
     T, shape = shape_infer(op, args...)
     XRTArray{T, shape, length(shape)}
 end
