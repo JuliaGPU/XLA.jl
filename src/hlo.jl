@@ -71,11 +71,10 @@ fill_fields!(proto::HloInstructionProto, s::HloSlice) = proto.slice_dimensions =
 # This opcode isn't really real - there's very little point to a map
 # unless we're able to compile it
 struct HloMap{T} <: HloOp{:map}
-    f::T
 end
 fill_fields!(proto::HloInstructionProto, s::HloMap) = nothing
-@noinline function (m::HloMap)(args::XRTArray...)
-    XRTArray(map(m.f, map(x->convert(Array, x), args)...))::typeof(args[1])
+@noinline function (m::HloMap{fT})(f::fT, args::XRTArray...) where {fT}
+    XRTArray(map(f, map(x->convert(Array, x), args)...))::typeof(args[1])
 end
 
 struct WindowDims
@@ -133,35 +132,37 @@ function fill_fields!(proto::HloInstructionProto, d::HloConv)
     proto.convolution_dimension_numbers = xla.ConvolutionDimensionNumbers(d.dims)
 end
 
-struct HloReduceWindow{T, N} <: HloOp{Symbol("reduce-window")}
-    f::T
+struct HloReduceWindow{fT, N} <: HloOp{Symbol("reduce-window")}
     window::NTuple{N, WindowDims}
 end
+(::Type{HloReduceWindow{fT}})(a::NTuple{N, WindowDims}) where {fT, N} =
+    HloReduceWindow{fT, N}(a)
 function fill_fields!(proto::HloInstructionProto, d::HloReduceWindow)
     window = xla.Window(dimensions = map(xla.WindowDimension, collect(d.window)))
     proto.window = window
 end
 
-struct HloReduce{T, N} <: HloOp{:reduce}
-    f::T
+struct HloReduce{fT, N} <: HloOp{:reduce}
     dims::NTuple{N, Int64}
 end
+(::Type{HloReduce{fT}})(dims::NTuple{N, Int64}) where {fT, N} =
+    HloReduce{fT, N}(dims)
 function fill_fields!(proto::HloInstructionProto, d::HloReduce)
     proto.dimensions = collect(Int64, d.dims)
 end
 
 
 # Temporary to check all operations are defined
-@noinline function (m::HloReduceWindow)(arg::XRTArray, init::XRTArray)
-    T, Shape = shape_infer(m, typeof(arg))
+@noinline function (m::HloReduceWindow{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
+    T, Shape = shape_infer(m, typeof(f), typeof(arg), typeof(init))
     x = XRTArray(rand(T, Shape))
-    x::infer_rt(m, typeof(arg))
+    x::infer_rt(m, typeof(f), typeof(arg))
 end
 
-@noinline function (m::HloReduce)(arg::XRTArray, init::XRTArray)
-    T, Shape = shape_infer(m, typeof(arg), typeof(init))
+@noinline function (m::HloReduce{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
+    T, Shape = shape_infer(m, typeof(f), typeof(arg), typeof(init))
     x = XRTArray(rand(T, Shape))
-    x::infer_rt(m, typeof(arg), typeof(init))
+    x::infer_rt(m, typeof(f), typeof(arg), typeof(init))
 end
 
 struct HloReshape{N} <: HloOp{:reshape}
@@ -250,6 +251,14 @@ function HloInstructionProto(op::HloOp, operands::Union{Argument, HloInstruction
             element_type = xla.PrimitiveType.TUPLE,
             tuple_shapes = collect(op.shape for op in operands)
         )
+    elseif isa(op, Union{HloMap, HloReduce, HloReduceWindow})
+        T, shape = shape_infer(op,
+            typeof(op).parameters[1],
+            map(operands) do op
+                convert(Type{<:XRTArray}, op.shape)
+            end...
+        )
+        xshape = Shape(T, shape)
     else
         T, shape = shape_infer(op,
             map(operands) do op

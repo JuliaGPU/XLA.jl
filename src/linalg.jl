@@ -11,10 +11,16 @@ end
 # A couple of scalar embeddings (could use casette in the future)
 Base.:+(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:add}(T, ())(A, B)
+Base.:-(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+    GenericHloOp{:subtract}(T, ())(A, B)
 Base.:/(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:divide}(T, ())(A, B)
+Base.:*(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+    GenericHloOp{:multiply}(T, ())(A, B)
 Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
 Base.zero(A::XRTArray{<:Any, (), 0}) = zero(typeof(A))
+Base.one(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(one(T))
+Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
 Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
@@ -71,7 +77,7 @@ function Broadcast.copy(bc::Broadcast.Broadcasted{<:XRTArrayStyle})
         # This could be axes(bc′) if we had better constant prop
         rsize = map(length, Broadcast.combine_axes(bc′.args...))
         args = map(arg->broadcast_to_size(arg, rsize), bc′.args)
-        return HloMap(bc′.f)(args...)
+        return HloMap{typeof(bc′.f)}()(bc′.f, args...)
     end
     # TODO: Pull back CPU, do this there
     error("No hope")
@@ -161,10 +167,9 @@ function make_maxpool_windows(x, k, pad, stride)
 end
 
 function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
-    HloReduceWindow(
-        max,
+    HloReduceWindow{typeof(max)}(
         make_maxpool_windows(x, k, pad, stride)
-    )(x, XRTArray(typemin(eltype(x))))
+    )(max, x, XRTArray(typemin(eltype(x))))
 end
 
 function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
@@ -201,8 +206,8 @@ end
 @Base.pure reduced_dimensions_collapes(sz, dims) = ntuple(i->i in dims ? 1 : sz[i], length(sz))
 function Base.mapreduce(f, op, A::XRTArray; dims=:)
     dt = dims_tuple(A, dims)
-    res = HloReduce(op, dt)(
-        HloMap(f)(A),
+    res = HloReduce{typeof(op)}(dt)(op,
+        HloMap{typeof(f)}()(f, A),
         XRTArray(zero(eltype(A)))
     )
     if dims != (:)
