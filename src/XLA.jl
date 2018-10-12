@@ -22,6 +22,7 @@ module XLA
     include("compiler_passes.jl")
     include("compiler_interface.jl")
     include("utils.jl")
+    include("grad.jl")
 
     regen_proto() = run(ProtoBuf.protoc(`-I=/home/keno/tensorflow/ --julia_out=gen /home/keno/tensorflow/tensorflow/compiler/xrt/xrt.proto`))
 
