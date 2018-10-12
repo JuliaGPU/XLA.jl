@@ -14,6 +14,7 @@ function grab_ir(f, argtypes)
 end
 
 function _compile_to_xla!(computations, comp, ir, sv)
+    @Base.show ir
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
     for i = 1:length(ir.argtypes)

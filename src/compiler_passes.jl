@@ -59,17 +59,20 @@ end
 function run_xla_embedding_passes!(ir, sv)
     Compiler.verify_ir(ir);
     domtree = Compiler.construct_domtree(ir.cfg);
+    Base.display(ir)
+    ir = Compiler.compact!(ir, true)
     ir = Compiler.domsort_ssa!(ir, domtree); Base.display(ir)
     ir = Compiler.cfg_simplify!(ir)
-    ir = Compiler.compact!(ir)
+    Base.display(ir)
+    ir = Compiler.compact!(ir, true)
     ir = refine_types!(ir, sv)
     ir = Compiler.ssa_inlining_pass!(ir, ir.linetable, sv)
-    ir = Compiler.compact!(ir)
+    ir = Compiler.compact!(ir, true)
     for i = 1:3
         domtree = Compiler.construct_domtree(ir.cfg);
         ir = Compiler.domsort_ssa!(ir, domtree)
         ir = Compiler.cfg_simplify!(ir)
-        ir = Compiler.compact!(ir)
+        ir = Compiler.compact!(ir, true)
     end
     ir = Compiler.compact!(ir)
     ir = Compiler.compact!(ir)
