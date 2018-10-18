@@ -7,7 +7,7 @@ mutable struct XRTCompilation
         buf = IOBuffer()
         writeproto(buf, comp)
         res = new(sess, comp.hlo_snapshot.hlo.hlo_module.program_shape,
-            run(sess, TensorFlow.Ops.xrt_compile(String(take!(buf)))))
+            run(sess, TensorFlow.Ops.xrt_compile(String(take!(buf))))[1])
         finalizer(close, res)
         res
     end
