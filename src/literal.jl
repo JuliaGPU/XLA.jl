@@ -76,8 +76,9 @@ function Base.convert(::Type{LiteralProto}, a::Array{<:XLAScalar})
     # For performance on TPUs, we need to permute the dimensions to
     # have smaller dimensions be more major
     xlat = convert(XlaType, eltype(a))
-    perm = reverse(sortperm(collect(size(a)); rev=true))
+    perm = sortperm(collect(size(a)); rev=true)
     shape = Shape(xlat, size(a))
+    shape.layout.minor_to_major = perm .- 1
     lp = LiteralProto()
     lp.shape = shape
     assign_data!(lp, perm == [] ? vec(a) : vec(permutedims(a, perm)))

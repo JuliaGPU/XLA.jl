@@ -53,6 +53,38 @@ function code_typed_xla(sig::Type; argvals=nothing)
     run_xla_embedding_passes!(ir, sv)
 end
 
+function Base.dump(c::XLAComputation)
+   mktemp() do f, io
+       writeproto(io, c.hlo_snapshot)
+       close(io)
+       run(`/home/keno/tensorflow/bazel-bin/tensorflow/compiler/xla/tools/dumped_computation_to_text $f`)
+   end
+   nothing
+end
+
+macro tpu_dump(expr)
+    @assert isexpr(expr, :call)
+    quote
+        let f = $(esc(expr.args[1]))
+            ir, sv = code_typed_xla(f, Base.typesof($(map(esc, expr.args[2:end])...)))
+            Base.display(ir)
+            Base.dump(XLA.compile_to_xla(ir, sv))
+        end
+    end
+end
+
+macro tpu_dump_file(file, expr)
+    @assert isexpr(expr, :call)
+    quote
+        let f = $(esc(expr.args[1]))
+            ir, sv = code_typed_xla(f, Base.typesof($(map(esc, expr.args[2:end])...)))
+            c = XLA.compile_to_xla(ir, sv)
+            open($(esc(file)), "w") do io
+                writeproto(io, c.hlo_snapshot)
+            end
+        end
+    end
+end
 
 macro tpu_compile(expr)
     @assert isexpr(expr, :call)

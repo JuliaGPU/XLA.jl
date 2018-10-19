@@ -192,19 +192,20 @@ function fill_fields!(proto::HloInstructionProto, r::HloRev)
     proto.dimensions = collect(r.dims)
 end
 
-struct HloSelectAndScatter2{T, S, N} <: HloOp{Symbol("select-and-scatter")}
-    select::T
-    scatter::S
+struct HloSelectAndScatter{T, S, N} <: HloOp{Symbol("select-and-scatter")}
     window::NTuple{N, WindowDims}
 end
-function fill_fields!(proto::HloInstructionProto, r::HloSelectAndScatter2)
-    window = xla.Window(dimensions = map(xla.WindowDimension, collect(d.window)))
+(::Type{HloSelectAndScatter{T, S}})(a::NTuple{N, WindowDims}) where {T, S, N} =
+    HloSelectAndScatter{T, S, N}(a)
+
+function fill_fields!(proto::HloInstructionProto, r::HloSelectAndScatter)
+    window = xla.Window(dimensions = map(xla.WindowDimension, collect(r.window)))
     proto.window = window
 end
-@noinline function (m::HloSelectAndScatter2)(op::XRTArray, source::XRTArray, init::XRTArray)
-    T, Shape = shape_infer(m, typeof(op), typeof(source), typeof(init))
-    x = XRTArray(rand(T, Shape))
-    x::infer_rt(m, typeof(op), typeof(source), typeof(init))
+@noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::XRTArray, source::XRTArray, init::XRTArray) where {T,S}
+    ST, Shape = shape_infer(m, T, S, typeof(op), typeof(source), typeof(init))
+    x = XRTArray(rand(ST, Shape))
+    x::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
 end
 
 struct Argument
@@ -259,6 +260,17 @@ function HloInstructionProto(op::HloOp, operands::Union{Argument, HloInstruction
             end...
         )
         xshape = Shape(T, shape)
+    elseif isa(op, Union{HloSelectAndScatter})
+        T, shape = shape_infer(op,
+            typeof(op).parameters[1],
+            typeof(op).parameters[2],
+            map(operands) do op
+                convert(Type{<:XRTArray}, op.shape)
+            end...
+        )
+        xshape = Shape(T, shape)
+    elseif isa(op, GenericHloOp)
+        xshape = Shape(op.T, op.shape)
     else
         T, shape = shape_infer(op,
             map(operands) do op
