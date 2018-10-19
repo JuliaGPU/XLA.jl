@@ -8,6 +8,8 @@ function Base.:*(A::XRTArray, B::XRTVector)
     HloDot(ddots)(A, B)
 end
 
+@noinline Base.convert(::Type{Bool}, A::XRTArray{Bool, (), 0}) = convert(Array, A)[]
+
 # A couple of scalar embeddings (could use casette in the future)
 Base.:+(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:add}(T, ())(A, B)
@@ -24,6 +26,10 @@ Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
 Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
+@eval Base.isless(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+    convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
+@eval Base.:<=(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+    GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B)
 
 Base.transpose(A::XRTArray) = HloTranspose((1,0))(A)
 Base.permutedims(A::XRTArray, perm) = HloTranspose(map(x->x-1, perm))(A)
@@ -92,7 +98,7 @@ using NNlib
     end
 end
 
-function NNlib.conv(input::XRTArray, kernel::XRTArray; pad = 0, stride = 1, dilation = 1)
+function (::NNlib._conv{pad, stride, dilation})(input::XRTArray, kernel::XRTArray) where {pad, stride, dilation}
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
     dilation_ = NNlib.padtuple(kernel, dilation)
     sz_ = size(kernel)
@@ -105,7 +111,7 @@ function NNlib.conv(input::XRTArray, kernel::XRTArray; pad = 0, stride = 1, dila
     HloConv(windows, convdims)(input, kernel)
 end
 
-function NNlib.∇conv_data(dy::XRTArray, input::XRTArray, kernel::XRTArray; pad = 0, stride = 1, dilation = 1)
+function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray, input::XRTArray, kernel::XRTArray) where {pad, stride, dilation}
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
     dilation_ = NNlib.padtuple(kernel, dilation)
     mirrored = kernel #permutedims(kernel, (2, 1, 3, 4)) #HloRev((0,1))(kernel)
@@ -130,7 +136,7 @@ function NNlib.∇conv_data(dy::XRTArray, input::XRTArray, kernel::XRTArray; pad
     HloConv(windows, convdims)(dy, mirrored)
 end
 
-function NNlib.∇conv_filter(dy::XRTArray, input::XRTArray, kernel::XRTArray; pad = 0, stride = 1, dilation = 1)
+function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray, input::XRTArray, kernel::XRTArray) where {pad, stride, dilation}
     # TODO: Validate that this is correct. Unfortunately, the NNlib
     # implementation itself is broken, so we need to fix that first
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
@@ -148,11 +154,15 @@ function NNlib.∇conv_filter(dy::XRTArray, input::XRTArray, kernel::XRTArray; p
         WindowDims(osz[i], s, pad_before, pad_after, d, 1, false)
     end
     convdims = ConvDimNums(
-        3, 2, (0, 1),
+        # N.B. The input and output dimensions are exchanged here from the
+        # standard notion of convolution
         2, 3, (0, 1),
-        3, 2, (0, 1)
+        3, 2, (0, 1),
+        2, 3, (0, 1)
     )
-    HloConv(windows, convdims)(input, dy)
+    r = HloConv(windows, convdims)(input, dy)
+    @assert size(r) == size(kernel)
+    r
 end
 
 
@@ -173,10 +183,9 @@ function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
 end
 
 function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
-    HloSelectAndScatter2(
-        >=, +,
+    HloSelectAndScatter{typeof(>=), typeof(+)}(
         make_maxpool_windows(x, k, pad, stride)
-    )(x, dy, XRTArray(zero(eltype(x))))
+    )(>=, +, x, dy, XRTArray(zero(eltype(x))))
 end
 
 function NNlib.softmax(xs::XRTArray)

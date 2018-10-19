@@ -106,7 +106,7 @@ function shape_infer(op::HloTranspose, args::Type{<:XRTArray}...)
     (eltype(args[1]), transpose_dims(size(args[1]), op.permutation))
 end
 
-function shape_infer(op::HloSelectAndScatter2, args::Type{<:XRTArray}...)
+function shape_infer(op::HloSelectAndScatter{T, S}, ::Type{T}, ::Type{S}, args::Type{<:XRTArray}...) where {T,S}
     (eltype(args[1]), size(args[1]))
 end
 

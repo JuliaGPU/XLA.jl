@@ -1,5 +1,7 @@
 using Zygote
+using ForwardDiff
 
+ForwardDiff.can_dual(::Type{XRTArray{T,(),0}} where T) = true
 Zygote.isscalar(::XRTArray{<:Any,(),0}) = true
 Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v) where {T, dims, N} =
     HloBroadcast((), dims)(XRTArray(convert(T, v)))

@@ -29,7 +29,9 @@ mutable struct XRTAllocation
         writeproto(buf, XLAAllocation(
             device_ordinal = Int32(0),
             value = literal))
-        res = new(sess, run(sess, TensorFlow.Ops.xrt_allocate(String(take!(buf)))))
+        alloc = placeholder(String)
+        op = TensorFlow.Ops.xrt_allocate(alloc)
+        res = new(sess, run(sess, op, Dict(alloc=>String(take!(buf)))))
         finalizer(close, res)
         res
     end
