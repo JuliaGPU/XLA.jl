@@ -11,8 +11,12 @@ end
 # A couple of scalar embeddings (could use casette in the future)
 Base.:+(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:add}(T, ())(A, B)
+Base.:-(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+    GenericHloOp{:subtract}(T, ())(A, B)
 Base.:/(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:divide}(T, ())(A, B)
+Base.:*(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+    GenericHloOp{:multiply}(T, ())(A, B)
 Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
 Base.zero(A::XRTArray{<:Any, (), 0}) = zero(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
@@ -174,7 +178,10 @@ function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_
     )(x, dy, XRTArray(zero(eltype(x))))
 end
 
-NNlib.softmax(xs::XRTArray) = exp.(xs) ./ sum(exp.(xs))
+function NNlib.softmax(xs::XRTArray)
+    ys = xs .- maximum(xs)
+    exp.(ys) ./ sum(exp.(ys))
+end
 function NNlib.∇softmax(Δ, xs::XRTArray)
     s = sum(exp, xs, dims=1)
     exp.(xs)./s.*(Δ .- sum(Δ .* exp.(xs), dims=1)./s)
