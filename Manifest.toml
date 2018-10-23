@@ -12,15 +12,15 @@ version = "0.2.0"
 
 [[Adapt]]
 deps = ["LinearAlgebra", "Test"]
-git-tree-sha1 = "036ce44a518b912c43df728bfae274f8d8de9059"
+git-tree-sha1 = "a1245c11af6876245c32f82f2067bf67f7da8cee"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "0.3.1"
+version = "0.4.0"
 
 [[Arpack]]
 deps = ["BinaryProvider", "Libdl", "LinearAlgebra", "Random", "SparseArrays", "Test"]
-git-tree-sha1 = "5b046410fb617d9cf2f8bc0edd5da05a2e5a2ad4"
+git-tree-sha1 = "1ce1ce9984683f0b6a587d5bdbc688ecb480096f"
 uuid = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
-version = "0.2.3"
+version = "0.3.0"
 
 [[AutoHashEquals]]
 git-tree-sha1 = "45bb6705d93be619b81451bb2006b7ee5d4e4453"
@@ -50,9 +50,9 @@ version = "0.8.10"
 
 [[BinaryProvider]]
 deps = ["Libdl", "Pkg", "SHA", "Test"]
-git-tree-sha1 = "38be61810f280c3c478f5c38aaf387f8f9199275"
+git-tree-sha1 = "9930c1a6cd49d9fcd7218df6be417e6ae4f1468a"
 uuid = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
-version = "0.5.1"
+version = "0.5.2"
 
 [[CatIndices]]
 deps = ["CustomUnitRanges", "OffsetArrays", "Test"]
@@ -104,9 +104,9 @@ version = "0.3.0"
 
 [[Conda]]
 deps = ["Compat", "JSON", "VersionParsing"]
-git-tree-sha1 = "85b5bf3ffcf4f39abe019dab1dd00a0aead8d882"
+git-tree-sha1 = "fb86fe40cb5b35990e368709bfdc1b46dbb99dac"
 uuid = "8f4d0f93-b110-5947-807f-2305c1781a2d"
-version = "1.0.2"
+version = "1.1.1"
 
 [[CoordinateTransformations]]
 deps = ["Compat", "Rotations", "StaticArrays"]
@@ -194,17 +194,19 @@ version = "0.5.3"
 
 [[Flux]]
 deps = ["AbstractTrees", "Adapt", "CodecZlib", "Colors", "DiffRules", "ForwardDiff", "Juno", "LinearAlgebra", "MacroTools", "NNlib", "NaNMath", "Printf", "Random", "Reexport", "Requires", "SpecialFunctions", "Statistics", "StatsBase", "Test", "ZipFile"]
-git-tree-sha1 = "062fc3f91e549b6e34eb785794e7ef8b65f2b941"
+git-tree-sha1 = "62d96cb8002a5b3b7df0649513af4255c7765d95"
 repo-rev = "kf/tpu_wip"
-repo-url = "https://github.com/FluxML/Flux.jl.git"
+repo-url = "https://github.com/FluxML/Flux.jl"
 uuid = "587475ba-b771-5e3f-ad9e-33799f191a9c"
-version = "0.6.7+"
+version = "0.6.8+"
 
 [[ForwardDiff]]
-deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "InteractiveUtils", "LinearAlgebra", "NaNMath", "Pkg", "Random", "SparseArrays", "SpecialFunctions", "StaticArrays", "Test"]
-git-tree-sha1 = "8425a7d4e060bc2ded32d090bce910a187d6cce7"
+deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "InteractiveUtils", "LinearAlgebra", "NaNMath", "Random", "SparseArrays", "SpecialFunctions", "StaticArrays", "Test"]
+git-tree-sha1 = "c309b4a2e7f3050cfe84f6fcb475f9b51f5eb5c3"
+repo-rev = "master"
+repo-url = "https://github.com/JuliaDiff/ForwardDiff.jl"
 uuid = "f6369f11-7733-5829-9624-2563aa707210"
-version = "0.9.0"
+version = "0.10.0+"
 
 [[GZip]]
 deps = ["Libdl", "Pkg", "Test"]
@@ -223,6 +225,14 @@ deps = ["Base64", "Dates", "Distributed", "IniFile", "MbedTLS", "Sockets", "Test
 git-tree-sha1 = "b881f69331e85642be315c63d05ed65d6fc8a05b"
 uuid = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 version = "0.7.1"
+
+[[IRTools]]
+deps = ["InteractiveUtils", "MacroTools", "Test"]
+git-tree-sha1 = "7b8b3f721fe72df69066ad9341008fce22a1f9ff"
+repo-rev = "kf/tpu"
+repo-url = "https://github.com/Keno/IRTools.jl"
+uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
+version = "0.1.0"
 
 [[IdentityRanges]]
 deps = ["OffsetArrays", "Pkg", "Test"]
@@ -308,9 +318,9 @@ uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
 [[Interpolations]]
 deps = ["AxisAlgorithms", "LinearAlgebra", "OffsetArrays", "Random", "Ratios", "SharedArrays", "SparseArrays", "StaticArrays", "Test", "WoodburyMatrices"]
-git-tree-sha1 = "d3328be2a9624d62957607a8bdfcc164d24f1b6d"
+git-tree-sha1 = "56691033f157dd1ee1d2aa042114caeefefa897b"
 uuid = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
-version = "0.10.3"
+version = "0.10.5"
 
 [[IntervalSets]]
 deps = ["Compat"]
@@ -320,9 +330,9 @@ version = "0.3.0"
 
 [[IterTools]]
 deps = ["Pkg", "SparseArrays", "Test"]
-git-tree-sha1 = "3eb252416e1a5215530420cdd22b46208bb9d4c7"
+git-tree-sha1 = "79246285c43602384e6f1943b3554042a3712056"
 uuid = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
-version = "1.1.0"
+version = "1.1.1"
 
 [[JLD2]]
 deps = ["CodecZlib", "DataStructures", "FileIO", "LinearAlgebra", "Mmap", "Printf", "Random", "Test"]
@@ -379,9 +389,9 @@ uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
 
 [[MbedTLS]]
 deps = ["BinaryProvider", "Libdl", "Pkg", "Random", "Sockets", "Test"]
-git-tree-sha1 = "3775d205b09b624aa06d39012a8920ba99cb3b8b"
+git-tree-sha1 = "4b890362c0c2fdb14a575ce927f1f4eeac6dda9f"
 uuid = "739be429-bea8-5141-9913-cc70e7f3736d"
-version = "0.6.3"
+version = "0.6.4"
 
 [[Media]]
 deps = ["MacroTools", "Test"]
@@ -400,9 +410,9 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 
 [[NNlib]]
 deps = ["Libdl", "LinearAlgebra", "MacroTools", "Requires", "Test"]
-git-tree-sha1 = "796a01e3b12534058e25a89b7d6362e23637a8e3"
-repo-rev = "master"
-repo-url = "https://github.com/FluxML/NNlib.jl.git"
+git-tree-sha1 = "0daba044bddfc84abb27b4a30321b825dcb695ea"
+repo-rev = "kf/convtparams"
+repo-url = "https://github.com/FluxML/NNlib.jl"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 version = "0.4.2+"
 
@@ -464,9 +474,9 @@ version = "0.6.1+"
 
 [[PyCall]]
 deps = ["Compat", "Conda", "MacroTools", "Statistics", "VersionParsing"]
-git-tree-sha1 = "f56428481fd0caf01cc8ecd2a0892fdaf8fddd50"
+git-tree-sha1 = "ce4681263f41d98b3faf6107b28284bf8b866f5f"
 uuid = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
-version = "1.18.4"
+version = "1.18.5"
 
 [[QuadGK]]
 deps = ["DataStructures", "LinearAlgebra", "Test"]
@@ -560,10 +570,10 @@ uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
 version = "0.7.1"
 
 [[StaticArrays]]
-deps = ["InteractiveUtils", "LinearAlgebra", "Random", "Statistics", "Test"]
-git-tree-sha1 = "d432c79bef174a830304f8601427a4357dfdbfb7"
+deps = ["InteractiveUtils", "LinearAlgebra", "Pkg", "Random", "Statistics", "Test"]
+git-tree-sha1 = "c268a7d13e0af233f44911c4a3e92b532e85b724"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "0.8.3"
+version = "0.9.0"
 
 [[Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]
@@ -587,7 +597,7 @@ uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[TensorFlow]]
 deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MLDatasets", "MacroTools", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
-git-tree-sha1 = "f4edad714bb394603ba0c2bcf899e792632b1280"
+git-tree-sha1 = "ebb0c04f0ea12fd60a3f5e5eaddbf4b4e7732c60"
 repo-rev = "master"
 repo-url = "https://github.com/malmaud/TensorFlow.jl.git"
 uuid = "1d978283-2c37-5f34-9a8e-e9c0ece82495"
@@ -645,3 +655,11 @@ deps = ["Printf", "Test"]
 git-tree-sha1 = "c191e56c849b1784cacbf7cd5e52cc672f1ae2db"
 uuid = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
 version = "0.7.0"
+
+[[Zygote]]
+deps = ["DiffRules", "ForwardDiff", "IRTools", "InteractiveUtils", "MacroTools", "NNlib", "NaNMath", "Random", "Requires", "SpecialFunctions", "Test"]
+git-tree-sha1 = "690e17cbe7299c43699b41305682af3b97879430"
+repo-rev = "kf/tpuwip"
+repo-url = "https://github.com/FluxML/Zygote.jl"
+uuid = "e88e6eb3-aa80-5325-afca-941959d7151f"
+version = "0.1.0+"
