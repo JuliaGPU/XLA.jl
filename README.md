@@ -3,7 +3,7 @@
 WARNING: This is extremely ugly code. Use for demo only ;).
 
 # Quick start quide
-- Grab julia on branch kf/tpu2
+- Grab julia on branch kf/tpu3
 - Instantiate this repo
 - Put TensorFlow into development mode:
 ```
