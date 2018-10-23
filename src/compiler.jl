@@ -57,10 +57,7 @@ function outline_control_flow!(ir)
     end
     split_block = 1
     while true
-        @Base.show split_block
-        @Base.show ir.cfg
         divergence_blocks = copy(ir.cfg.blocks[split_block].succs)
-        @Base.show divergence_blocks
         @assert length(divergence_blocks) == 2
         # For our simple experiments only allow a single block
         join_block = ir.cfg.blocks[divergence_blocks[1]].succs[1]
@@ -83,7 +80,6 @@ function outline_control_flow!(ir)
         cond_stmt = ir.stmts[condition.cond.id]
         @assert isexpr(cond_stmt, :invoke)
         cond = cond_stmt.args[4]
-        @Base.show cond
         ir.stmts[ir.cfg.blocks[join_block].stmts[1]] = Expr(:call, inst, cond, nothing, nothing)
         # Delete divergence blocks
         for bbidx in divergence_blocks
@@ -96,9 +92,7 @@ function outline_control_flow!(ir)
             empty!(cb_succs); empty!(jb_preds);
             push!(cb_succs, join_block); push!(jb_preds, split_block)
         end
-        @Base.show divergence_blocks
         for bbidx in divergence_blocks
-            @Base.show bbidx
             block = ir.cfg.blocks[bbidx]
             empty!(block.preds); empty!(block.succs)
         end
@@ -127,7 +121,6 @@ end
 
 function _compile_to_xla!(computations, comp, ir, sv)
     ir = outline_control_flow!(ir)
-    Base.display(ir)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
     sparams = sv === nothing ? Core.svec() : sv.sp
@@ -145,7 +138,6 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 push!(vargs, instr)
                 push!(xla_args, T)
             end
-            @Base.show ir.argtypes[i]
             arg_instrs[i] = HloInstructionProto(comp, HloTuple(), vargs...)
         elseif ir.argtypes[i] ⊑ XRTArray
             AT = widenconst(ir.argtypes[i])
@@ -164,9 +156,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
     end
     ssa_vals = Vector{HloInstructionProto}(undef, length(ir.stmts))
     function hlo_eval(arg)
-        @show arg
         if isa(arg, Compiler.Argument)
-            @Base.show arg_instrs[arg.n].parameter_number
             return arg_instrs[arg.n]
         elseif isa(arg, SSAValue)
             return ssa_vals[arg.id]
@@ -178,7 +168,6 @@ function _compile_to_xla!(computations, comp, ir, sv)
         isa(stmt, Nothing) && continue
         isa(stmt, ReturnNode) && continue
         if isexpr(stmt, :new) || (isexpr(stmt, :call) && Compiler.is_known_call(stmt, tuple, ir, sparams))
-            @Base.show stmt_idx
             ssa_vals[stmt_idx] = HloInstructionProto(comp, HloTuple(), map(hlo_eval, filter(x->x!=nothing, stmt.args[2:end]))...)
             continue
         end
@@ -187,17 +176,10 @@ function _compile_to_xla!(computations, comp, ir, sv)
             elt = argextype(stmt.args[3], ir, sparams)
             isa(elt, Const) || error("non-constant structure indexing (1)")
             idx = Compiler.try_compute_fieldidx(structT, elt.val)
-            if idx === nothing
-                @Base.show stmt
-                @Base.show stmt_idx
-                @Base.show ir
-                @Base.show length(ir.stmts)
-            end
             idx !== nothing || error("non-constant structure indexing (2)")
             if !representable(fieldtype(structT, idx))
                 continue
             end
-            @Base.show stmt.args[2]
             tuple_idx = count(i->representable(fieldtype(structT, i)), 1:idx-1) + 1
             proto = HloInstructionProto(comp, HloGetTupleElement(tuple_idx - 1),
                 hlo_eval(stmt.args[2]))
@@ -277,7 +259,6 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 end
                 args = map(x->isa(x, Nothing) ? empty_tuple : hlo_eval(x), stmt.args[2:end])
                 if_type = ir.types[stmt_idx]
-                @Base.show args
                 proto = HloInstructionProto(comp,
                     GenericHloOp{:conditional}(if_type.parameters[1], if_type.parameters[2]), args...)
                 proto.called_computation_ids = Int64[]

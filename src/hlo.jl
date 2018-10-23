@@ -244,7 +244,7 @@ function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_
     proto
 end
 
-function HloInstructionProto(op::HloOp, operands::Union{Argument, HloInstructionProto}...; id=make_id(), name="$(opcode(op))$id")
+function HloInstructionProto(op::HloOp, @nospecialize(operands::Union{Argument, HloInstructionProto}...); id=make_id(), name="$(opcode(op))$id")
     if isa(op, HloGetTupleElement)
         xshape = operands[1].shape.tuple_shapes[op.idx+1]
     elseif isa(op, HloTuple)
@@ -290,7 +290,7 @@ function HloInstructionProto(op::HloOp, operands::Union{Argument, HloInstruction
     proto
 end
 
-function HloInstructionProto(comp::HloComputationProto, op::HloOp, args...; id=make_id(), name=nothing)
+function HloInstructionProto(comp::HloComputationProto, op::HloOp, @nospecialize(args...); id=make_id(), name=nothing)
     proto = HloInstructionProto(op, args...; id=id, name=something(name, "comp$(comp.id)_$(opcode(op))$id"))
     push!(comp.instructions, proto)
     proto

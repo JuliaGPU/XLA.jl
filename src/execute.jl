@@ -45,7 +45,7 @@ function Base.run(xrt::XRTCompilation, args::AnyXLA...)
     run(xrt, map(a->gethandle!(xrt.sess, a), args)...)
 end
 
-function execute(op::HloOp, args::AnyXLA...)
+function _execute(op::HloOp, args::AnyXLA...)
     sess = nothing
     for x in args
         if x.storage.remotestorage !== nothing
@@ -59,7 +59,15 @@ function execute(op::HloOp, args::AnyXLA...)
         xrt = XLA.compile(sess, build_computation(op, args...))
         ret = run(xrt, args...)
     end
-    ret::infer_rt(op, map(typeof, args)...)
+    ret
+end
+
+function execute(op::HloOp, args::AnyXLA...)
+    # This acts as a temporary inference barrier. We don't benefit from looking
+    # through this (since we use infer_rt to figure out the return type) and when
+    # aggressive optimizations are on, compiling the execute code can be *very*
+    # expensive.
+    Base.invokelatest(_execute, op, args...)::infer_rt(op, map(typeof, args)...)
 end
 
 @noinline (op::GenericHloOp)(args::AnyXLA...) = execute(op, args...)
