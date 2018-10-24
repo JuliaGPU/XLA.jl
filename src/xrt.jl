@@ -20,7 +20,8 @@ mutable struct XRTCompilation
         res = new(sess,
             current_device(sess),
             comp.hlo_snapshot.hlo.hlo_module.program_shape, rt,
-            run(sess, op, Dict(alloc => String(take!(buf)))))
+            run(sess, op, Dict(alloc => String(take!(buf))))[1],
+        )
         finalizer(close, res)
         res
     end

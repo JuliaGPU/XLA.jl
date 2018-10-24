@@ -1,9 +1,5 @@
 using Revise
-
-using XLA
-using Metalhead
-using Flux
-using TensorFlow
+using XLA, TensorFlow, Flux, Metalhead
 
 # For now. Media.jl has a bug
 pop!(Base.Multimedia.displays)
@@ -19,21 +15,30 @@ sess = Session(Graph(); target="grpc://localhost:8470")
 # run(sess, TensorFlow.Ops.configure_distributed_tpu())
 
 # Generate some random data (or use a real image here)
-x = rand(Float32, 224, 224, 3, 1)
+x = rand(Float32, 224, 224, 3, 10);
 
-# @tpu ic(x)
+function VGG_forward(sess, device)
+    with_device(device) do
+        xrt(ic) = Flux.mapleaves(x->isa(x, AbstractArray) ? XRTArray(x) : x, ic)
+        xrtic = xrt(ic)
+        ic_alloc = XRTAllocation(sess, XLA.struct_to_literal(xrtic))
+        xrtx = XRTArray(sess, x)
 
-# The ic is fairly large and takes a while to transfer over the network.
-# Here we do the same manually, but only transfer the model once. This is
-# useful when chaning the batch size (which uses the same data structure,
-# but a different program).
+        compld = @tpu_compile xrtic(xrtx)
+        @time run(compld, ic_alloc, XLA.gethandle!(sess, xrtx))
+    end
+end
 
-xrt(ic) = Flux.mapleaves(x->isa(x, AbstractArray) ? XRTArray(x) : x, ic)
-xrtic = xrt(ic)
-ic_alloc = XRTAllocation(sess, XLA.struct_to_literal(xrtic))
-xrtx = XRTArray(sess, x)
+# Quick sanity tests
+# with_device("/job:job/replica:1/task:1/device:XLA_GPU:1") do
+#     xrtx = XRTArray(sess, x)
+# end
 
-#@code_typed params = Core.Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true, ignore_all_inlining_heuristics=true) $(xrtic)(xrtx)
+# with_device("/job:job/replica:1/task:1/device:XLA_CPU:1") do
+#     xrtx = XRTArray(sess, x)
+# end
 
-compld = @tpu_compile xrtic(xrtx)
-run(compld, ic_alloc, XLA.gethandle!(sess, xrtx))
+# Actually run VGG
+VGG_forward(sess, "/job:job/replica:1/task:1/device:XLA_CPU:1")
+VGG_forward(sess, "/job:job/replica:1/task:1/device:XLA_GPU:1")
+

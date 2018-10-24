@@ -108,7 +108,7 @@ using NNlib
 @Base.pure function conv_windows(sz_, pad_, stride_, dilation_)
     ntuple(length(pad_)) do i
         (sz, p, s, d) = sz_[i], pad_[i], stride_[i], dilation_[i]
-        WindowDims(sz, s, p, p, d, 1, true)
+        WindowDims(sz, s, p, p, d, 1, false)
     end
 end
 
