@@ -6,8 +6,10 @@ mutable struct XRTCompilation
     function compile(sess, comp::XLAComputation)
         buf = IOBuffer()
         writeproto(buf, comp)
+        alloc = placeholder(String)
+        op = TensorFlow.Ops.xrt_compile(alloc)
         res = new(sess, comp.hlo_snapshot.hlo.hlo_module.program_shape,
-            run(sess, TensorFlow.Ops.xrt_compile(String(take!(buf)))))
+            run(sess, op, Dict(alloc => String(take!(buf)))))
         finalizer(close, res)
         res
     end
@@ -40,9 +42,9 @@ mutable struct XRTAllocation
         iob = PipeBuffer();
         writeproto(iob, config)
         str = String(take!(iob))
-
-        res = new(com.sess, run(com.sess, TensorFlow.Ops.xrt_execute(com.h,
-            str, collect(map(x->x.h, inputs)))))
+        alloc = placeholder(String)
+        op = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
+        res = new(com.sess, run(com.sess, op, Dict(alloc => str)))
         finalizer(close, res)
         T = convert(Type, XlaType(com.shape.result.element_type))
         dims = (com.shape.result.dimensions...,)
