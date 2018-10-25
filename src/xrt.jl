@@ -1,14 +1,25 @@
+function current_device(sess)
+    dvs = sess.graph.op_context.devices
+    isempty(dvs) ? nothing : dvs[end]
+end
+
 mutable struct XRTCompilation
     sess
+    device::Union{Nothing, TensorFlow.Device}
+    # XLA Program Shape
     shape::ProgramShape
+    # Julia Return Type
+    rt::Type
     h::Int64
     global compile
-    function compile(sess, comp::XLAComputation)
+    function compile(sess, comp::XLAComputation, rt::Type)
         buf = IOBuffer()
         writeproto(buf, comp)
         alloc = placeholder(String)
         op = TensorFlow.Ops.xrt_compile(alloc)
-        res = new(sess, comp.hlo_snapshot.hlo.hlo_module.program_shape,
+        res = new(sess,
+            current_device(sess),
+            comp.hlo_snapshot.hlo.hlo_module.program_shape, rt,
             run(sess, op, Dict(alloc => String(take!(buf)))))
         finalizer(close, res)
         res
@@ -19,12 +30,18 @@ function Base.setproperty!(c::XRTCompilation, args...)
 end
 
 function Base.close(c::XRTCompilation)
-    run(c.sess, TensorFlow.Ops.xrt_release_compilation_handle(c.h))
+    f() = run(c.sess, TensorFlow.Ops.xrt_release_compilation_handle(c.h))
+    if c.device === nothing
+        f()
+    else
+        with_defice(f, c.device)
+    end
     Core.setfield!(c, :h, -1)
 end
 
 mutable struct XRTAllocation
     sess
+    device::Union{Nothing, TensorFlow.Device}
     h::Int64
     function XRTAllocation(sess, literal::LiteralProto)
         buf = IOBuffer()
@@ -33,7 +50,9 @@ mutable struct XRTAllocation
             value = literal))
         alloc = placeholder(String)
         op = TensorFlow.Ops.xrt_allocate(alloc)
-        res = new(sess, run(sess, op, Dict(alloc=>String(take!(buf)))))
+        res = new(sess,
+            current_device(sess),
+            run(sess, op, Dict(alloc=>String(take!(buf)))))
         finalizer(close, res)
         res
     end
@@ -43,8 +62,11 @@ mutable struct XRTAllocation
         writeproto(iob, config)
         str = String(take!(iob))
         alloc = placeholder(String)
-        op = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
-        res = new(com.sess, run(com.sess, op, Dict(alloc => str)))
+        # Make sure everything is on the same device
+        @assert all(input->input.device == com.device, inputs)
+        _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
+        op = com.device === nothing ? _op() : with_device(_op, com.device)
+        res = new(com.sess, com.device, run(com.sess, op, Dict(alloc => str)))
         finalizer(close, res)
         T = convert(Type, XlaType(com.shape.result.element_type))
         dims = (com.shape.result.dimensions...,)
@@ -56,7 +78,12 @@ function Base.setproperty!(c::XRTAllocation, args...)
 end
 
 function Base.close(c::XRTAllocation)
-    run(c.sess, TensorFlow.Ops.xrt_release_allocation_handle(c.h))
+    f() = run(c.sess, TensorFlow.Ops.xrt_release_allocation_handle(c.h))
+    if c.device === nothing
+        f()
+    else
+        with_defice(f, c.device)
+    end
     Core.setfield!(c, :h, -1)
 end
 
@@ -91,7 +118,10 @@ function Base.convert(::Type{Array}, A::XRTArray)
     if A.storage.localstorage !== nothing
         return copy(A.storage.localstorage)
     end
-    literal = run(A.storage.remotestorage.sess, TensorFlow.Ops.xrt_read_literal(A.storage.remotestorage.h))::String
+    rs = A.storage.remotestorage
+    sess, dev, h = rs.sess, rs.device, rs.h
+    op() = run(sess, TensorFlow.Ops.xrt_read_literal(h))::String
+    literal = dev === nothing ? op() : with_device(op, dev)
     A.storage.localstorage = convert(Array, readproto(IOBuffer(literal), LiteralProto()))
     return copy(A.storage.localstorage)
 end

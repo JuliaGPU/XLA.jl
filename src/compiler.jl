@@ -329,7 +329,7 @@ function compile_to_xla(ir, sv)
         config=config,
         hlo_snapshot = hlo_snap
     )
-
+    xlac, rt
 end
 
 function representable(T)

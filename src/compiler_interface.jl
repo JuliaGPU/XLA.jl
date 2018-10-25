@@ -75,7 +75,7 @@ macro tpu_dump_file(file, expr)
     quote
         let f = $(esc(expr.args[1]))
             ir, sv = code_typed_xla(f, Base.typesof($(map(esc, expr.args[2:end])...)))
-            c = XLA.compile_to_xla(ir, sv)
+            c, rt = XLA.compile_to_xla(ir, sv)
             open($(esc(file)), "w") do io
                 writeproto(io, c.hlo_snapshot)
             end
@@ -88,7 +88,7 @@ macro tpu_compile(expr)
     quote
         let f = $(esc(expr.args[1]))
             ir, sv = code_typed_xla(f, Base.typesof($(map(esc, expr.args[2:end])...)))
-            compld = XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv))
+            compld = XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv)...)
             compld
         end
     end
