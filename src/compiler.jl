@@ -291,8 +291,73 @@ function _compile_to_xla!(computations, comp, ir, sv)
     xla_args
 end
 
+struct NotOffloadableError
+    ir
+    sv
+    reason
+end
+
+function Base.showerror(io::IO, e::NotOffloadableError)
+    println(io, "The specified function is not offloadable. The offending IR was:")
+    println(io, e.ir)
+    if isa(e.reason, String)
+        println(io, e.reason)
+    elseif isa(e.reason, Function)
+        e.reason(io, e.ir, e.sv)
+    end
+end
+
+macro check_ir(cond, args...)
+    @assert length(args) <= 1
+    reason = length(args) == 0 ? nothing : esc(args[1])
+    quote
+        if !$(esc(cond))
+            throw(NotOffloadableError($(esc(:ir)), $(esc(:sv)), $(reason)))
+        end
+    end
+end
+
+function synthesize_bt_for_line(ir, line)
+    entry = ir.lines[line]
+    frames = Base.StackFrame[]
+    while entry !== 0
+        lin = ir.linetable[entry]
+        @Base.show lin
+        push!(frames, Base.StackFrame(lin.method,  lin.file, lin.line, nothing, false, true, C_NULL))
+        entry = lin.inlined_at
+    end
+    frames
+end
+
+function analyze_unreachable(io::IO, ir, sv)
+    print(io, "The called function was guaranteed to error. Analyzing...\n")
+    rv = ir.stmts[end]
+    @assert isa(rv, ReturnNode)
+    # Generally the call before the ReturnNode will be the offending one
+    before = ir.stmts[end - 1]
+    if ir.types[end - 1] !== Bottom || !isexpr(before, :call)
+        println(io, "This IR looks odd. Prior statement was not a call that was guaranteed to error")
+        return
+    end
+    # See if this is a method error
+    f = argextype(before.args[1], ir, sv.sp)
+    isa(f, Const) || return println(io, "Expected function to be a constant")
+    f = f.val
+    args = Tuple{[widenconst(argextype(before.args[i], ir, sv.sp)) for i = 2:length(before.args)]...}
+    args = Base.to_tuple_type(args)
+    tt = Base.signature_type(f, args)
+    m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, sv.params.world)
+    if m === nothing
+        synthetic_bt = synthesize_bt_for_line(ir, length(ir.stmts)-1)
+        showerror(io, MethodError(f, args, sv.params.world), synthetic_bt)
+    end
+end
+
 function compile_to_xla(ir, sv)
-    @assert length(ir.cfg.blocks) == 1
+    @check_ir length(ir.cfg.blocks) == 1 "The called function may only have one basic block"
+    # TODO: Since all HLO operations are essentially effect free, we could just have
+    # a compilation result that throws this error.
+    @check_ir isa(ir.stmts[end], ReturnNode) && isdefined(ir.stmts[end], :val) analyze_unreachable
     rt = argextype(ir.stmts[end].val, ir, sv.sp)
     computations = HloComputationProto[]
     comp = HloComputationProto(

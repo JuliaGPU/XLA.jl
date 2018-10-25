@@ -8,17 +8,31 @@ function Base.:*(A::XRTArray, B::XRTVector)
     HloDot(ddots)(A, B)
 end
 
-@noinline Base.convert(::Type{Bool}, A::XRTArray{Bool, (), 0}) = convert(Array, A)[]
+const XRTScalar{T} = XRTArray{T, (), 0}
+@noinline Base.convert(::Type{Bool}, A::XRTScalar{Bool}) = convert(Array, A)[]
+function Base.promote_rule(A::Type{XRTScalar{T}}, B::Type{XRTScalar{S}}) where {T<:XLAScalar, S<:XLAScalar}
+    XRTArray{promote_type(T, S), (), 0}
+end
+
+
+# Scalar conversions - Happens via HloConvert. In the future, we may
+# want to make sure to more closely match julia semantics.
+Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{S}) where {T,S} = GenericHloOp{:convert}(T, ())(x)
 
 # A couple of scalar embeddings (could use casette in the future)
-Base.:+(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
-    GenericHloOp{:add}(T, ())(A, B)
-Base.:-(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
-    GenericHloOp{:subtract}(T, ())(A, B)
-Base.:/(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
-    GenericHloOp{:divide}(T, ())(A, B)
-Base.:*(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
-    GenericHloOp{:multiply}(T, ())(A, B)
+using Base.Meta
+for (binop, xlaop) in
+        ((:+, :add),
+         (:-, :subtract),
+         (:/, :divide),
+         (:*, :multiply))
+    @eval Base.$(binop)(A::XRTScalar{T,},
+                        B::XRTScalar{T}) where {T<:XLAScalar} =
+        GenericHloOp{$(quot(xlaop))}(T, ())(A, B)
+    @eval Base.$(binop)(args::XRTScalar{<:XLAScalar}...) =
+        $(binop)(promote(args...)...)
+end
+
 Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
 Base.zero(A::XRTArray{<:Any, (), 0}) = zero(typeof(A))
 Base.one(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(one(T))
@@ -98,7 +112,7 @@ using NNlib
     end
 end
 
-function (::NNlib._conv{pad, stride, dilation})(input::XRTArray, kernel::XRTArray) where {pad, stride, dilation}
+function (::NNlib._conv{pad, stride, dilation})(input::XRTArray{T}, kernel::XRTArray{T}) where {T, pad, stride, dilation}
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
     dilation_ = NNlib.padtuple(kernel, dilation)
     sz_ = size(kernel)
@@ -111,7 +125,7 @@ function (::NNlib._conv{pad, stride, dilation})(input::XRTArray, kernel::XRTArra
     HloConv(windows, convdims)(input, kernel)
 end
 
-function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray, input::XRTArray, kernel::XRTArray) where {pad, stride, dilation}
+function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray{T}, input::XRTArray{T}, kernel::XRTArray) where {T, pad, stride, dilation}
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
     dilation_ = NNlib.padtuple(kernel, dilation)
     mirrored = kernel #permutedims(kernel, (2, 1, 3, 4)) #HloRev((0,1))(kernel)
@@ -136,7 +150,7 @@ function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray, input::
     HloConv(windows, convdims)(dy, mirrored)
 end
 
-function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray, input::XRTArray, kernel::XRTArray) where {pad, stride, dilation}
+function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, input::XRTArray{T}, kernel::XRTArray) where {T, pad, stride, dilation}
     # TODO: Validate that this is correct. Unfortunately, the NNlib
     # implementation itself is broken, so we need to fix that first
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
