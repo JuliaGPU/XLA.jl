@@ -80,3 +80,23 @@ end
 @noinline (op::HloTranspose)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloRev)(args::AnyXLA...) = execute(op, args...)
 
+# This function is invoked via invokelatest which acts as an inference barrier.
+# Thus statically, we get the type given by `infer_rt`, while dynamically we get
+# this nice and informative error. TODO: Actually implement dynamic semantics for these
+function dynamic_not_implemented(op)
+    error("Dynamic semantics not implemented for HLO operation of type $(typeof(op))\n"*
+          "Try compiled mode or implement dynamic semantics.")
+end
+
+@noinline function (m::HloReduceWindow{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
+    invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg))
+end
+
+@noinline function (m::HloReduce{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
+    invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg), typeof(init))
+end
+
+@noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::XRTArray, source::XRTArray, init::XRTArray) where {T,S}
+    invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
+end
+

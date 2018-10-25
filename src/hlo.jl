@@ -151,20 +151,6 @@ function fill_fields!(proto::HloInstructionProto, d::HloReduce)
     proto.dimensions = collect(Int64, d.dims)
 end
 
-
-# Temporary to check all operations are defined
-@noinline function (m::HloReduceWindow{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
-    T, Shape = shape_infer(m, typeof(f), typeof(arg), typeof(init))
-    x = XRTArray(rand(T, Shape))
-    x::infer_rt(m, typeof(f), typeof(arg))
-end
-
-@noinline function (m::HloReduce{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
-    T, Shape = shape_infer(m, typeof(f), typeof(arg), typeof(init))
-    x = XRTArray(rand(T, Shape))
-    x::infer_rt(m, typeof(f), typeof(arg), typeof(init))
-end
-
 struct HloReshape{N} <: HloOp{:reshape}
     result_shape::NTuple{N, Int}
 end
@@ -201,11 +187,6 @@ end
 function fill_fields!(proto::HloInstructionProto, r::HloSelectAndScatter)
     window = xla.Window(dimensions = map(xla.WindowDimension, collect(r.window)))
     proto.window = window
-end
-@noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::XRTArray, source::XRTArray, init::XRTArray) where {T,S}
-    ST, Shape = shape_infer(m, T, S, typeof(op), typeof(source), typeof(init))
-    x = XRTArray(rand(ST, Shape))
-    x::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
 end
 
 struct Argument
