@@ -1,4 +1,6 @@
-#!/usr/bin/env julia --project=..
+# Invoke this as something like `julia --project=.. benchmark_vgg.jl`
+# It is also helpful to have xrt_server already running, which you can find in `TensorFlow.jl/deps/downloads/bin`.
+# I like to do something like `CUDA_VISIBLE_DEVICES=2 ~/.julia/dev/TensorFlow/deps/downloads/bin/xrt_server`
 using XLA, TensorFlow
 
 # For now. Media.jl has a bug
@@ -8,7 +10,7 @@ pop!(Base.Multimedia.displays)
 sess = Session(Graph(); target="grpc://localhost:8470")
 
 
-using Flux, Metalhead, BenchmarkTools, JLD2
+using Flux, Metalhead, BenchmarkTools, JLD2, Printf
 
 """
     prepare_model(model::Chain)
@@ -70,17 +72,22 @@ CPU_device = "/job:job/replica:1/task:1/device:XLA_CPU:1"
 GPU_device = "/job:job/replica:1/task:1/device:XLA_GPU:1"
 batch_sizes = (1, 2, 4, 8, 16, 32, 64)
 
-@info("Precompiling all CPU and GPU models:")
+@info("Precompiling CPU and GPU models for all batch sizes:")
 compiled_models = Dict("CPU" => Dict(), "GPU" => Dict())
+t_start = time()
 for batch_size in batch_sizes
     print("$(batch_size) ")
     compiled_models["CPU"][batch_size] = compile_model_for_device(model, sess, CPU_device, batch_size)
     compiled_models["GPU"][batch_size] = compile_model_for_device(model, sess, GPU_device, batch_size)
 end
+t_compiling = time() - t_start
+println()
+@info(@sprintf("Precompilation finished in %.2fs", t_compiling))
 
 # Allow benchmarking to go up to 60 seconds for each execution, so that we get
 # good statistics for each call
 BenchmarkTools.DEFAULT_PARAMETERS.seconds = 120
+BenchmarkTools.DEFAULT_PARAMETERS.samples = 10
 
 results = Dict("CPU" => Dict(), "GPU" => Dict())
 for batch_size in batch_sizes
@@ -90,12 +97,16 @@ for batch_size in batch_sizes
     @info("[$batch_size CPU] Executing...")
     results["CPU"][batch_size] = @benchmark run($(compiled_models["CPU"][batch_size]), $x)
     display(results["CPU"][batch_size])
+    println()
     
     @info("[$batch_size GPU] Executing...")
     results["GPU"][batch_size] = @benchmark run($(compiled_models["GPU"][batch_size]), $x)
     display(results["GPU"][batch_size])
+    println()
+
+    # Save partial results
+    jldopen("benchmark_results.jld2", "w") do f
+        f["results"] = results
+    end
 end
 
-jldopen("benchmark_results.jld2", "w") do f
-    f["results"] = results
-end

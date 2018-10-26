@@ -597,9 +597,9 @@ uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[TensorFlow]]
 deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MLDatasets", "MacroTools", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
-git-tree-sha1 = "ebb0c04f0ea12fd60a3f5e5eaddbf4b4e7732c60"
-repo-rev = "master"
-repo-url = "https://github.com/malmaud/TensorFlow.jl.git"
+git-tree-sha1 = "928fd2ca25b7fd686c0300cbd111682ecdb447f1"
+repo-rev = "sf/xrt_server"
+repo-url = "https://github.com/staticfloat/TensorFlow.jl"
 uuid = "1d978283-2c37-5f34-9a8e-e9c0ece82495"
 version = "0.10.2+"
 
