@@ -34,7 +34,7 @@ function Base.close(c::XRTCompilation)
     if c.device === nothing
         f()
     else
-        with_defice(f, c.device)
+        with_device(f, c.device)
     end
     Core.setfield!(c, :h, -1)
 end
@@ -82,7 +82,7 @@ function Base.close(c::XRTAllocation)
     if c.device === nothing
         f()
     else
-        with_defice(f, c.device)
+        with_device(f, c.device)
     end
     Core.setfield!(c, :h, -1)
 end
