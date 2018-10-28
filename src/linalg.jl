@@ -45,8 +45,35 @@ Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
 @eval Base.:<=(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B)
 
+# XRTArrays are immutable. Copy is identity.
+Base.copy(A::XRTArray) = A
 Base.transpose(A::XRTArray) = HloTranspose((1,0))(A)
 Base.permutedims(A::XRTArray, perm) = HloTranspose(map(x->x-1, perm))(A)
+
+
+# Recursive version of promote shape
+# TODO: This shouldn't be necessary if inference did better
+# purity/nothrow modeling.
+check_shape_match(a::Tuple{}, b::Tuple{}) = true
+function check_shape_match(a::Tuple, b::Tuple{})
+    first(a) == 1:1 || return false
+    check_shape_match(Base.tail(a), ())
+end
+function check_shape_match(a::Tuple, b::Tuple)
+    first(a) == first(b) || return false
+    check_shape_match(Base.tail(a), Base.tail(b))
+end
+function promote_shape_rec(a, b)
+    if length(a) < length(b)
+        return promote_shape(b, a)
+    end
+    check_shape_match(a, b) || error("Dimensions must match")
+    a
+end
+
+function Base.promote_shape(a::XRTArray, b::XRTArray)
+    promote_shape_rec(axes(a), axes(b))
+end
 
 import Base.Broadcast
 
@@ -180,7 +207,7 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
 end
 
 
-function make_maxpool_windows(x, k, pad, stride)
+function make_pooling_windows(x, k, pad, stride)
     k_, pad_, stride_ = NNlib.padtuple(x, k),
                         NNlib.padtuple(x, pad),
                         NNlib.padtuple(x, stride)
@@ -192,13 +219,19 @@ end
 
 function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
     HloReduceWindow{typeof(max)}(
-        make_maxpool_windows(x, k, pad, stride)
+        make_pooling_windows(x, k, pad, stride)
     )(max, x, XRTArray(typemin(eltype(x))))
+end
+
+function NNlib.meanpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
+    HloReduceWindow{typeof(+)}(
+        make_pooling_windows(x, k, pad, stride)
+    )(+, x, XRTArray(zero(eltype(x))))
 end
 
 function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
     HloSelectAndScatter{typeof(>=), typeof(+)}(
-        make_maxpool_windows(x, k, pad, stride)
+        make_pooling_windows(x, k, pad, stride)
     )(>=, +, x, dy, XRTArray(zero(eltype(x))))
 end
 
