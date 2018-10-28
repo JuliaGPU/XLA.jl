@@ -80,10 +80,12 @@ end
 Compiles a model for a specific device and allocates space for it on that device.
 """
 function compile_model_for_device(model::ImmutableChain, sess, device, batch_size)
-    return with_device(device) do
-        alloc = XRTAllocation(sess, XLA.struct_to_literal(model))
-        compiled = @tpu_compile model(XRTArray(sess, randn(Float32, 224, 224, 3, batch_size)))
-        return CompiledModel(alloc, compiled, sess, device)
+    return TensorFlow.as_default(sess.graph) do
+        return with_device(device) do
+            alloc = XRTAllocation(sess, XLA.struct_to_literal(model))
+            compiled = @tpu_compile model(XRTArray(sess, randn(Float32, 224, 224, 3, batch_size)))
+            return CompiledModel(alloc, compiled, sess, device)
+        end
     end
 end
 
@@ -95,13 +97,17 @@ function XLA.run(m::CompiledModel, args...)
     # moving arrays over from the CPU to the remote device
     transfer_array(x::XRTAllocation) = x
     function transfer_array(x::AbstractArray)
-        return with_device(m.device) do
-            return XLA.gethandle!(m.sess, XRTArray(m.sess, x))
+        return TensorFlow.as_default(m.sess.graph) do
+            return with_device(m.device) do
+                return XLA.gethandle!(m.sess, XRTArray(m.sess, x))
+            end
         end
     end
 
     # Gotta Go Fast (TM)
-    return run(m.compiled_code, m.allocation, transfer_array.(args)...)
+    return TensorFlow.as_default(m.sess.graph) do
+        run(m.compiled_code, m.allocation, transfer_array.(args)...)
+    end
 end
 
 
