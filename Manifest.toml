@@ -336,9 +336,9 @@ version = "0.10.5"
 
 [[IntervalSets]]
 deps = ["Compat"]
-git-tree-sha1 = "bf1c727a12bbe0beb4888d439ee4e91b9ba7944a"
+git-tree-sha1 = "9dc556002f23740de13946e8c2e41798e09a9249"
 uuid = "8197267c-284f-5f27-9208-e0e47529a953"
-version = "0.3.0"
+version = "0.3.1"
 
 [[IterTools]]
 deps = ["Pkg", "SparseArrays", "Test"]
@@ -615,7 +615,7 @@ uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
 [[TensorFlow]]
 deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MLDatasets", "MacroTools", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
-git-tree-sha1 = "928fd2ca25b7fd686c0300cbd111682ecdb447f1"
+git-tree-sha1 = "520e9cd60c62c87f6fbb95ec976f29be0597447c"
 repo-rev = "sf/xrt_server"
 repo-url = "https://github.com/staticfloat/TensorFlow.jl"
 uuid = "1d978283-2c37-5f34-9a8e-e9c0ece82495"
