@@ -48,7 +48,7 @@ end
     
 cpu_device = get_device(cpu_sess, "XLA_CPU")
 gpu_device = get_device(gpu_sess, "XLA_GPU")
-tpu_device = get_device(tpu_sess, "TPU")
+tpu_device = get_device(tpu_sess, "TPU_SYSTEM")
 
 using Flux, Metalhead, BenchmarkTools, JLD2, Printf
 
