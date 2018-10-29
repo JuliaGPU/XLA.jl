@@ -96,12 +96,22 @@ function Base.setproperty!(c::XRTAllocation, args...)
     error("XRTAllocation may not be modified")
 end
 
+const tf = TensorFlow
+global counter = 0
 function Base.close(c::XRTAllocation)
-    f() = run(c.sess, TensorFlow.Ops.xrt_release_allocation_handle(c.h))
-    if c.device === nothing
-        f()
-    else
-        with_device(f, c.device)
+    global counter
+    counter += 1
+    desc = tf.NodeDescription(c.sess.graph, "Const", "ReleaseAllocationHandle$(counter)/Const")
+    desc["value"] = TensorFlow.RawTensor(c.h)
+    desc["dtype"] = typeof(c.h)
+    cc = tf.Tensor(tf.Operation(desc))
+    desc2 = tf.NodeDescription(c.sess.graph, "XRTReleaseAllocationHandle", "ReleaseAllocationHandle$(counter)")
+    tf.add_input(desc2, cc)
+    c.device !== nothing && tf.set_device(desc2, c.device)
+    try
+        run(c.sess, tf.Tensor(tf.Operation(desc2)))
+    catch err
+        error(string("TensorFlow error: ", string(err.status)))
     end
     Core.setfield!(c, :h, -1)
 end
