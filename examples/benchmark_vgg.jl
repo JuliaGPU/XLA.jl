@@ -45,10 +45,19 @@ function get_device(sess, device_type)
     fixup_device(d) = d
     return fixup_device(TensorFlow.Device(device.name))
 end
-    
+
 cpu_device = get_device(cpu_sess, "XLA_CPU")
 gpu_device = get_device(gpu_sess, "XLA_GPU")
-tpu_device = get_device(tpu_sess, "TPU_SYSTEM")
+tpu_device = get_device(tpu_sess, "TPU")
+
+# Initialize the TPU system
+if tpu_device !== nothing
+    as_default(tpu_sess.graph) do
+        with_device(tpu_device) do
+            run(tpu_sess, TensorFlow.Ops.configure_distributed_tpu())
+        end
+    end
+end
 
 using Flux, Metalhead, BenchmarkTools, JLD2, Printf
 
@@ -105,9 +114,7 @@ function XLA.run(m::CompiledModel, args...)
     end
 
     # Gotta Go Fast (TM)
-    return TensorFlow.as_default(m.sess.graph) do
-        run(m.compiled_code, m.allocation, transfer_array.(args)...)
-    end
+    run(m.compiled_code, m.allocation, transfer_array.(args)...)
 end
 
 

@@ -15,8 +15,11 @@ mutable struct XRTCompilation
     function compile(sess, comp::XLAComputation, rt::Type)
         buf = IOBuffer()
         writeproto(buf, comp)
-        alloc = placeholder(String)
-        op = TensorFlow.Ops.xrt_compile(alloc)
+        local alloc
+        op = as_default(sess.graph) do
+            alloc = placeholder(String)
+            TensorFlow.Ops.xrt_compile(alloc)
+        end
         res = new(sess,
             current_device(sess),
             comp.hlo_snapshot.hlo.hlo_module.program_shape, rt,
@@ -30,7 +33,17 @@ function Base.setproperty!(c::XRTCompilation, args...)
 end
 
 function Base.close(c::XRTCompilation)
-    f() = run(c.sess, TensorFlow.Ops.xrt_release_compilation_handle(c.h))
+    f() = as_default(c.sess.graph) do
+        try
+            run(c.sess, TensorFlow.Ops.release_compilation_handle(c.h))
+        catch err
+            # This runs as a finalizer. The error gets printed using the
+            # C printer rather than the julia one. Transform the error
+            # message to make sure it's readable
+            ccall(:jl_, Cvoid, (Any,), c)
+            error(string("TensorFlow error: ", string(err.status)))
+        end
+    end
     if c.device === nothing
         f()
     else
@@ -48,8 +61,11 @@ mutable struct XRTAllocation
         writeproto(buf, XLAAllocation(
             device_ordinal = Int32(0),
             value = literal))
-        alloc = placeholder(String)
-        op = TensorFlow.Ops.xrt_allocate(alloc)
+        local alloc
+        op = as_default(sess.graph) do
+            alloc = placeholder(String)
+            TensorFlow.Ops.xrt_allocate(alloc)
+        end
         res = new(sess,
             current_device(sess),
             run(sess, op, Dict(alloc=>String(take!(buf)))))
@@ -61,11 +77,14 @@ mutable struct XRTAllocation
         iob = PipeBuffer();
         writeproto(iob, config)
         str = String(take!(iob))
-        alloc = placeholder(String)
-        # Make sure everything is on the same device
-        @assert all(input->input.device == com.device, inputs)
-        _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
-        op = com.device === nothing ? _op() : with_device(_op, com.device)
+        local alloc
+        op = as_default(com.sess.graph) do
+            alloc = placeholder(String)
+            # Make sure everything is on the same device
+            @assert all(input->input.device == com.device, inputs)
+            _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
+            return com.device === nothing ? _op() : with_device(_op, com.device)
+        end
         res = new(com.sess, com.device, run(com.sess, op, Dict(alloc => str)))
         finalizer(close, res)
         T = convert(Type, XlaType(com.shape.result.element_type))
@@ -120,7 +139,9 @@ function Base.convert(::Type{Array}, A::XRTArray)
     end
     rs = A.storage.remotestorage
     sess, dev, h = rs.sess, rs.device, rs.h
-    op() = run(sess, TensorFlow.Ops.xrt_read_literal(h))::String
+    op() = as_default(sess.graph) do
+        run(sess, TensorFlow.Ops.xrt_read_literal(h))::String
+    end
     literal = dev === nothing ? op() : with_device(op, dev)
     A.storage.localstorage = convert(Array, readproto(IOBuffer(literal), LiteralProto()))
     return copy(A.storage.localstorage)
