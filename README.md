@@ -7,4 +7,4 @@ WARNING: This is extremely ugly code. Use for demo only ;).
 - Instantiate this repo
 - `julia> using TensorFlow`
 - Get yourself an `xrt_server` (either running it locally via ``run(`$(joinpath(dirname(pathof(TensorFlow)),"..","deps","downloads","bin","xrt_server"))`)`` or by spinning up a Google Cloud TPU and starting an SSH tunnel to expose its port to the world) and connect it to localhost:8470
-- Run the script in examples/vgg_forward.jl
+- Run the script in `examples/vgg_forward.jl`
