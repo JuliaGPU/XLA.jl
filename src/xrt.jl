@@ -119,6 +119,11 @@ end
 mutable struct XRTStorage{T, N}
     localstorage::Union{Array{T, N}, Nothing}
     remotestorage::Union{XRTAllocation, Nothing}
+    function XRTStorage{T, N}(localstorage::Union{Array{T, N}, Nothing},
+                              remotestorage::Union{XRTAllocation, Nothing}) where {T, N}
+        @assert localstorage !== nothing || remotestorage !== nothing
+        new{T, N}(localstorage, remotestorage)
+    end
     function XRTStorage{T, N}(a::Array{T, N}) where {T, N}
         new{T, N}(a, nothing)
     end
@@ -136,6 +141,13 @@ struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
     end
     @noinline function XRTArray{T, (), 0}(a::T) where {T<:XLAScalar}
         XRTArray{T, (), 0}(fill(a))
+    end
+    @noinline function XRTArray{T, (), 0}(a::T) where {T<:XRTArray}
+        # Can share storage
+        storage = a.storage.remotestorage !== nothing ?
+            XRTStorage{T, 0}(a.storage.remotestorage) :
+            XRTStorage{T, 0}(fill(a))
+        new{T, (), 0}(storage)
     end
     @noinline function XRTArray{T, Dims, N}(h::XRTAllocation) where {T, Dims, N}
         @assert length(Dims) == N
@@ -157,6 +169,10 @@ function Base.convert(::Type{Array}, A::XRTArray)
     return copy(A.storage.localstorage)
 end
 
+@noinline function Base.convert(::Type{T}, A::XRTArray{T, (), 0}) where {T}
+    convert(Array, A)[]::T
+end
+
 function gethandle!(sess, A::XRTArray)
     if A.storage.remotestorage !== nothing
         @assert A.storage.remotestorage.sess === sess
@@ -174,6 +190,12 @@ function XRTArray(a::Array{T}) where {T}
 end
 function XRTArray(a::XLAScalar)
     XRTArray{typeof(a), (), 0}(a)
+end
+function XRTArray(a::Tuple{XLAScalar})
+    XRTArray{typeof(a[1]), (), 0}(a[1])
+end
+function XRTArray(a::Tuple{XRTArray})
+    XRTArray{typeof(a[1]), (), 0}(a[1])
 end
 XRTArray(sess, A::AbstractArray) = XRTArray(sess, collect(A)::Array)
 XRTArray(sess, a::XLAScalar) = XRTArray(sess, fill(a))
@@ -199,6 +221,10 @@ function Shape(::Type{XRTArray{T, Dims, N}} where N) where {T, Dims}
     Shape(T, Dims)
 end
 Shape(T::Type, SHP::Tuple) = Shape(convert(XlaType, T), SHP)
+function Shape(::Type{<:XRTArray{T, SHP1}}, SHP2::Tuple) where {T, SHP1}
+    # Map arrays of arrays to higher rank arrays
+    Shape(T, (SHP1..., SHP2...))
+end
 function Shape(XLAT::XlaType, SHP::Tuple)
     perm = sortperm(collect(SHP); rev=true)
     Shape(

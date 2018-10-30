@@ -607,6 +607,12 @@ version = "0.7.0"
 deps = ["Libdl", "LinearAlgebra", "SparseArrays"]
 uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
+[[TSVD]]
+deps = ["LinearAlgebra", "SparseArrays", "Test"]
+path = "/home/keno/.julia/dev/TSVD"
+uuid = "9449cd9e-2762-5aa3-a617-5413e99d722e"
+version = "0.3.0+"
+
 [[TensorFlow]]
 deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MLDatasets", "MacroTools", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
 git-tree-sha1 = "520e9cd60c62c87f6fbb95ec976f29be0597447c"

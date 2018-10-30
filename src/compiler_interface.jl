@@ -65,7 +65,7 @@ macro tpu_dump(expr)
     quote
         let f = $(esc(expr.args[1]))
             ir, sv = code_typed_xla(f, Base.typesof($(map(esc, expr.args[2:end])...)))
-            Base.dump(XLA.compile_to_xla(ir, sv))
+            Base.dump(XLA.compile_to_xla(ir, sv)[1])
         end
     end
 end

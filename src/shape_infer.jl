@@ -12,14 +12,26 @@ eltypes_match(_::Type{<:XRTArray}) = true
 eltypes_match(a1::Type{<:XRTArray}, a2::Type{<:XRTArray}, args::Type{<:XRTArray}...) =
     eltype(a1) == eltype(a2) && eltypes_match(a2, args...)
 
+ndims_match(_::Type{<:XRTArray}) = true
+ndims_match(a1::Type{<:XRTArray}, a2::Type{<:XRTArray}, args::Type{<:XRTArray}...) =
+    ndims(a1) == ndims(a2) && eltypes_match(a2, args...)
+
 shapes_match(_::Type{<:XRTArray}) = true
 shapes_match(a1::Type{<:XRTArray}, a2::Type{<:XRTArray}, args::Type{<:XRTArray}...) =
     size(a1) == size(a2) && eltypes_match(a2, args...)
 
-function shape_infer(op::Union{HloBroadcast, HloReshape},
-                     args::Type{<:XRTArray}...)
+@Base.pure non_elt_args(T, shape) = shape[1+ndims(T):end]
+
+function shape_infer(op::HloBroadcast,
+                     args::Type{<:XRTArray}...) where {T}
     eltypes_match(args...) || error("eltype mismatch in $(typeof(op))")
     (eltype(args[1]), op.result_shape)
+end
+
+function shape_infer(op::HloReshape,
+                     arg::Type{<:XRTArray{T}}, args::Type{<:XRTArray}...) where {T}
+    eltypes_match(arg, args...) || error("eltype mismatch in $(typeof(op))")
+    (eltype(arg), non_elt_args(T, op.result_shape))
 end
 
 @Base.pure drop_reduce_dims(shape, dims) = tuple((shape[i] for i in 1:length(shape) if !(i-1 in dims))...)
@@ -78,6 +90,34 @@ function shape_infer(op::HloConv,
     # For now, assume convolution preserve type
     (eltype(lhs), shape)
 end
+
+function shape_infer(op::HloDynamicUpdateSlice, lhs::Type{<:XRTArray{T, Shp}}, args...) where {T, Shp}
+    (T, Shp)
+end
+
+function shape_infer(op::HloDynamicSlice, args...) where {T, Shp}
+    (eltype(args[1]), non_elt_args(eltype(args[1]), op.sizes))
+end
+
+@Base.pure function compute_concat_shape(dim::Int64, args...)
+    ntuple(ndims(args[1])) do i
+        if i - 1 == dim
+            return sum(j->size(args[j])[i], 1:length(args))
+        else
+            sz = args[1]
+            all(j->sz == size(args[j])[i], 1:length(args)) || error("Non-concatenated dimensions must match")
+            return sz
+        end
+    end
+end
+
+function shape_infer(op::HloConcatenate, args::Type{<:XRTArray}...)
+    eltypes_match(args...) || error("eltype mismatch in $(typeof(op))")
+    ndims_match(args...) || error("ndims mismatch in $(typeof(op))")
+    shp = compute_concat_shape(op.dim, args...)
+    (eltype(args[1]), shp)
+end
+
 
 @Base.pure function compute_dot_dimensions(op::HloDot, lhs::Type{<:XRTArray}, rhs::Type{<:XRTArray})
     lcd = op.dims.lhs_contracting_dimensions[1]
