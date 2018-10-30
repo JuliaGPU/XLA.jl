@@ -79,6 +79,9 @@ end
 @noinline (op::HloRng)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloTranspose)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloRev)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloDynamicSlice)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloDynamicUpdateSlice)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloConcatenate)(args::AnyXLA...) = execute(op, args...)
 
 # This function is invoked via invokelatest which acts as an inference barrier.
 # Thus statically, we get the type given by `infer_rt`, while dynamically we get
@@ -89,14 +92,14 @@ function dynamic_not_implemented(op)
 end
 
 @noinline function (m::HloReduceWindow{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
-    invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg))
+    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg))
 end
 
 @noinline function (m::HloReduce{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
-    invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg), typeof(init))
+    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg), typeof(init))
 end
 
 @noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::XRTArray, source::XRTArray, init::XRTArray) where {T,S}
-    invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
+    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
 end
 

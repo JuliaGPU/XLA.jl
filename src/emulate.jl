@@ -1,27 +1,35 @@
 function emulate(op::HloRng, a, b)
-    XRTArray(rand(convert(Array, a)[]:convert(Array, b)[], op.shape...))
+    dynamic_not_implemented(op)
 end
 
 function emulate(op::HloBroadcast, arg)
     if ndims(arg) == 0
         XRTArray(fill(convert(Array, arg)[], op.result_shape...))
     else
-        # TODO: Fix this
-        XRTArray(rand(shape_infer(op, typeof(arg))...))
+        dynamic_not_implemented(op)
     end
 end
 
 function emulate(op::HloReshape, arg)
-    @Base.show (op, size(arg))
     XRTArray(reshape(convert(Array, arg), op.result_shape))
 end
 
+function emulate(op::HloTranspose, arg)
+    aarg = convert(Array, arg)
+    if ndims(aarg) != length(op.permutation)
+        aarg = reshape(aarg, (size(aarg)...,
+            (1 for _ in 1:(length(op.permutation)-ndims(aarg)))...))
+    end
+    perm = map(x->x+1, op.permutation)
+    @show perm
+    XRTArray(collect(permutedims(aarg, )))
+end
 
 # TODO: Fix these
 function emulate(op::HloDot, a, b)
-    XRTArray(rand(shape_infer(op, typeof(a), typeof(b))...))
+    dynamic_not_implemented(op)
 end
 
 function emulate(op, args...)
-    XRTArray(rand(shape_infer(op, map(typeof, args)...)...))
+    dynamic_not_implemented(op)
 end

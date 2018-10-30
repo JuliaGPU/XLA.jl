@@ -2,10 +2,21 @@ function Base.:*(A::XRTArray, B::XRTArray)
     ddots = DimNums((1,), (0,), (), ())
     HloDot(ddots)(A, B)
 end
-
 function Base.:*(A::XRTArray, B::XRTVector)
     ddots = DimNums((1,), (0,), (), ())
     HloDot(ddots)(A, B)
+end
+Base.:*(A::XRTArray{<:Any, (), 0}, B::XRTVector) = broadcast(*, A, B)
+
+using LinearAlgebra
+function Base.:*(A::Adjoint{<:Any, <:XRTArray}, B::XRTArray)
+    ddots = DimNums((1,), (0,), (), ())
+    HloDot(ddots)(HloTranspose((1,0))(A.parent), B)
+end
+
+function Base.:*(A::Adjoint{<:Any, <:XRTVector}, B::XRTVector)
+    ddots = DimNums((0,), (0,), (), ())
+    HloDot(ddots)(A.parent, B)
 end
 
 const XRTScalar{T} = XRTArray{T, (), 0}
@@ -33,6 +44,30 @@ for (binop, xlaop) in
         $(binop)(promote(args...)...)
 end
 
+# XRT Scalars are not numbers so import some functions manually
+import Base: /, \, *
+for f in (:/, :\, :*)
+    if f != :/
+        @eval ($f)(A::XRTArray{<:Any, (), 0}, B::XRTArray) = broadcast($f, A, B)
+    end
+    if f != :\
+        @eval ($f)(A::XRTArray, B::XRTArray{<:Any, (), 0}) = broadcast($f, A, B)
+    end
+end
+
+
+embed(x::XLAScalar) = XRTArray(x)
+embed(x) = x
+
+concat_dims(::Type{<:XRTArray{T, Sz1}}, Sz2::Tuple) where {T, Sz1} = (Sz1..., Sz2...)
+concat_dims(::Type, Sz2::Tuple) where {T, Sz1} = Sz2
+
+function Base.zeros(::Type{XRTArray{T, Sz, N}}) where {T, Sz, N}
+    TT = T
+    HloBroadcast(ntuple(i->i-1, ndims(T)), Sz)(XRTArray((zero(TT),)))
+end
+Base.zero(::Type{XRTArray{T, Sz, N}}) where {T, Sz, N} = HloBroadcast(ntuple(i->i-1, ndims(T)), Sz)(XRTArray((zero(T),)))
+
 Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
 Base.zero(A::XRTArray{<:Any, (), 0}) = zero(typeof(A))
 Base.one(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(one(T))
@@ -40,6 +75,7 @@ Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
 Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
+Base.sqrt(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, XRTArray(0.5))
 @eval Base.isless(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
 @eval Base.:<=(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
@@ -47,7 +83,8 @@ Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
 
 # XRTArrays are immutable. Copy is identity.
 Base.copy(A::XRTArray) = A
-Base.transpose(A::XRTArray) = HloTranspose((1,0))(A)
+#Base.transpose(A::XRTArray) = HloTranspose((1,0))(A)
+#Base.adjoint(A::XRTArray{<:Real}) = HloTranspose((1,0))(A)
 Base.permutedims(A::XRTArray, perm) = HloTranspose(map(x->x-1, perm))(A)
 
 
@@ -283,4 +320,50 @@ function Flux.rand_similar(x::XRTArray{T, Shape}) where {T, Shape}
     HloRng(T, Shape, xla.RandomDistribution.RNG_UNIFORM)(
         XRTArray(zero(T)),
         XRTArray(one(T)))
+end
+
+using LinearAlgebra
+# TODO: Base scales by maxabs if necessary. Do we need that?
+function LinearAlgebra.dot(A::XRTVector, B::XRTVector)
+    ddots = DimNums((0,), (0,), (), ())
+    HloDot(ddots)(A, B)
+end
+LinearAlgebra.norm2(A::XRTArray, p) = sqrt(dot(A, A))
+function LinearAlgebra.norm(A::XRTArray, p::Real)
+    if p == 2
+        return LinearAlgebra.norm2(A, p)
+    end
+    error("Not implemented")
+end
+
+function Base.setindex(A::XRTVector{T}, v::T, i::Int64) where {T}
+    Base.setindex(A, XRTArray{T, (), 0}(v), i)
+end
+function Base.setindex(A::XRTVector{T}, v::XRTArray{T, (), 0}, i::Int64) where {T}
+    # TODO: It would be better to handle the dim mapping internally,
+    # but that requires access to the julia element type, which we don't currently
+    # expose
+    vb = HloBroadcast(ntuple(i->i-1, ndims(T)), ntuple(_->1, ndims(A)))(v)
+    inds = HloBroadcast((), (1,))(XRTArray{Int64, (), 0}(i))
+    if ndims(T) != 0
+        ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
+        inds = HloConcatenate(0)(ones, inds)
+    end
+    HloDynamicUpdateSlice()(A, vb, inds)
+end
+
+function Base.getindex(A::XRTVector{T}, i::Int64) where {T}
+    # TODO: It would be better to handle the dim mapping internally,
+    # but that requires access to the julia element type, which we don't currently
+    # expose
+    inds = HloBroadcast((), (1,))(XRTArray{Int64, (), 0}(i))
+    sizes = ntuple(_->1, ndims(A))
+    if ndims(T) != 0
+        ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
+        inds = HloConcatenate(0)(ones, inds)
+        sizes = (size(T)..., sizes...)
+    end
+    ret = HloDynamicSlice(sizes)(A, inds)
+    ret = HloReshape(size(T))(ret)
+    convert(T, ret)
 end

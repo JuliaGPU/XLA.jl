@@ -161,7 +161,8 @@ struct HloBroadcast{N1, N2} <: HloOp{:broadcast}
     result_shape::NTuple{N2, Int}
 end
 function fill_fields!(proto::HloInstructionProto, r::HloBroadcast)
-    proto.dimensions = collect(Int64, r.dim_mappings)
+    mappings = collect(Int64, r.dim_mappings)
+    proto.dimensions = mappings
 end
 
 struct HloTranspose{N} <: HloOp{:transpose}
@@ -215,6 +216,20 @@ let global_id = 0
     make_id() = (global_id += 1; global_id)
 end
 
+struct HloDynamicUpdateSlice <: HloOp{Symbol("dynamic-update-slice")}
+end
+fill_fields!(proto::HloInstructionProto, r::HloDynamicUpdateSlice) = nothing
+
+struct HloDynamicSlice{N} <: HloOp{Symbol("dynamic-slice")}
+    sizes::NTuple{N, Int64}
+end
+fill_fields!(proto::HloInstructionProto, r::HloDynamicSlice) = proto.dynamic_slice_sizes = collect(r.sizes)
+
+struct HloConcatenate <: HloOp{Symbol("concatenate")}
+    dim::Int64
+end
+fill_fields!(proto::HloInstructionProto, r::HloConcatenate) = proto.dimensions = Int64[r.dim]
+
 function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_id(), name=nothing)
     proto = HloInstructionProto(
         opcode=opcode,
@@ -225,7 +240,7 @@ function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_
     proto
 end
 
-function HloInstructionProto(op::HloOp, @nospecialize(operands::Union{Argument, HloInstructionProto}...); id=make_id(), name="$(opcode(op))$id")
+function shape_from_operands(op::HloOp, operands...)
     if isa(op, HloGetTupleElement)
         xshape = operands[1].shape.tuple_shapes[op.idx+1]
     elseif isa(op, HloTuple)
@@ -260,9 +275,14 @@ function HloInstructionProto(op::HloOp, @nospecialize(operands::Union{Argument, 
         )
         xshape = Shape(T, shape)
     end
+    return xshape
+end
+
+function HloInstructionProto(op::HloOp, @nospecialize(operands::Union{Argument, HloInstructionProto}...); id=make_id(), name="$(opcode(op))$id",
+        shape=shape_from_operands(op, operands...))
     proto = HloInstructionProto(
         opcode = opcode(op),
-        shape = xshape,
+        shape = shape,
         id = id,
         name = name,
         operand_ids = collect(map(x->x.id, operands))
@@ -271,8 +291,8 @@ function HloInstructionProto(op::HloOp, @nospecialize(operands::Union{Argument, 
     proto
 end
 
-function HloInstructionProto(comp::HloComputationProto, op::HloOp, @nospecialize(args...); id=make_id(), name=nothing)
-    proto = HloInstructionProto(op, args...; id=id, name=something(name, "comp$(comp.id)_$(opcode(op))$id"))
+function HloInstructionProto(comp::HloComputationProto, op::HloOp, @nospecialize(args...); id=make_id(), name=nothing, shape=shape_from_operands(op, args...))
+    proto = HloInstructionProto(op, args...; id=id, name=something(name, "comp$(comp.id)_$(opcode(op))$id"), shape=shape)
     push!(comp.instructions, proto)
     proto
 end

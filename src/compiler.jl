@@ -1,5 +1,5 @@
 const Compiler = Core.Compiler
-using .Compiler: ReturnNode, argextype, SSAValue, ⊑, widenconst, userefs, LineInfoNode, GotoNode, IRCode, GotoIfNot
+using .Compiler: ReturnNode, argextype, SSAValue, ⊑, widenconst, userefs, LineInfoNode, GotoNode, IRCode, GotoIfNot, PiNode
 using InteractiveUtils
 using ..XLA: HloParameter, HloOp, XLAComputationConfig, HloModuleProto, HloProto,
     HloSnapshot, XLAComputation, HloMap, HloGetTupleElement, XLAScalar,
@@ -121,6 +121,7 @@ end
 
 function _compile_to_xla!(computations, comp, ir, sv)
     ir = outline_control_flow!(ir)
+    Base.display(ir)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
     sparams = sv === nothing ? Core.svec() : sv.sp
@@ -159,6 +160,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
         if isa(arg, Compiler.Argument)
             return arg_instrs[arg.n]
         elseif isa(arg, SSAValue)
+            isassigned(ssa_vals, arg.id) || @show arg
             return ssa_vals[arg.id]
         else
             error()
@@ -167,6 +169,10 @@ function _compile_to_xla!(computations, comp, ir, sv)
     for (stmt_idx, stmt) in pairs(ir.stmts)
         isa(stmt, Nothing) && continue
         isa(stmt, ReturnNode) && continue
+        if isa(stmt, PiNode)
+            continue
+            #ssa_vals[stmt_idx] = hlo_eval(stmt.args[1])
+        end
         if isexpr(stmt, :new) || (isexpr(stmt, :call) && Compiler.is_known_call(stmt, tuple, ir, sparams))
             ssa_vals[stmt_idx] = HloInstructionProto(comp, HloTuple(), map(hlo_eval, filter(x->x!=nothing, stmt.args[2:end]))...)
             continue
@@ -195,7 +201,8 @@ function _compile_to_xla!(computations, comp, ir, sv)
             error("Unrecognized expr")
         end
         hlo_inst = isexpr(stmt, :invoke) ? stmt.args[2] : stmt.args[1]
-        isa(hlo_inst, QuoteNode) && (hlo_inst = hlo_inst.value)
+        hlo_inst = argextype(hlo_inst, ir, sv.sp)
+        hlo_inst = hlo_inst.val
         if isa(hlo_inst, HloOp)
             if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce)
                 args = map(hlo_eval, stmt.args[4:end])
@@ -277,12 +284,35 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 end
             else
                 args = map(hlo_eval, stmt.args[3:end])
-                proto = HloInstructionProto(comp, hlo_inst, args...)
+                shape = Shape(shape_infer(hlo_inst, map(arg->argextype(arg, ir, sv.sp), stmt.args[3:end])...)...)
+                proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
             end
             ssa_vals[stmt_idx] = proto
         elseif isa(hlo_inst, Type) && hlo_inst <: XRTArray
-            @assert isa(stmt.args[3], XLAScalar)
-            ssa_vals[stmt_idx] = HloInstructionProto(comp, HloConstant(stmt.args[3]))
+            ty = argextype(stmt.args[3], ir, sv.sp)
+            if isa(ty, Const) && isa(ty.val, XLAScalar)
+                ssa_vals[stmt_idx] = HloInstructionProto(comp, HloConstant(ty.val))
+            else
+                # Allow treating an XRTArray as a scalar inside another XRTArray
+                # This is a no-op at the HLO level
+                ty = widenconst(ty)
+                @assert ty <: XRTArray && (hlo_inst <: XRTArray{<:Any, (), 0})
+                ssa_vals[stmt_idx] = hlo_eval(stmt.args[3])
+            end
+        elseif hlo_inst == Base.convert
+            ty = argextype(stmt.args[3], ir, sv.sp)
+            arg = argextype(stmt.args[4], ir, sv.sp)
+            if arg <: XRTArray{<:Any, (), 0} && isa(ty, Const) && ty.val == eltype(arg)
+                # Allow conversions from a scalar array to its element
+                # type and codegen it as a no-op.
+                ssa_vals[stmt_idx] = hlo_eval(stmt.args[4])
+            else
+                @show stmt
+                error("Unrecognized convert")
+            end
+        else
+            @show stmt
+            error("Unrecognized")
         end
     end
     ret = ir.stmts[end]
