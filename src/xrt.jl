@@ -73,7 +73,7 @@ mutable struct XRTAllocation
         res
     end
     global run
-    function run(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+    function _run(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
         iob = PipeBuffer();
         writeproto(iob, config)
         str = String(take!(iob))
@@ -87,6 +87,10 @@ mutable struct XRTAllocation
         end
         res = new(com.sess, com.device, run(com.sess, op, Dict(alloc => str)))
         finalizer(close, res)
+        res
+    end
+    function run(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+        res = _run(com, inputs...; config=config)
         T = convert(Type, XlaType(com.shape.result.element_type))
         dims = (com.shape.result.dimensions...,)
         XRTArray{T, dims, length(dims)}(res)

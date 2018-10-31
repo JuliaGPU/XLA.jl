@@ -31,6 +31,11 @@ end
 function refine_types!(ir, sv)
     for i = 1:length(ir.stmts)
         stmt = ir.stmts[i]
+        if isexpr(stmt, :static_parameter)
+            @assert isa(ir.types[i], Const)
+            ir.stmts[i] = ir.types[i].val
+            continue
+        end
         (isexpr(stmt, :call) || isexpr(stmt, :new)) || continue
         arg1t = Compiler.argextype(stmt.args[1], ir, sv.sp)
         # This is a more agressive version of the tfunc inference we do for :new
