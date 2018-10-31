@@ -1,5 +1,5 @@
 const Compiler = Core.Compiler
-using .Compiler: ReturnNode, argextype, SSAValue, ⊑, widenconst, userefs, LineInfoNode, GotoNode, IRCode, GotoIfNot, PiNode
+using .Compiler: ReturnNode, argextype, SSAValue, ⊑, widenconst, userefs, LineInfoNode, GotoNode, IRCode, GotoIfNot, PiNode, PhiNode, foreachssa, block_for_inst, insert_node!
 using InteractiveUtils
 using ..XLA: HloParameter, HloOp, XLAComputationConfig, HloModuleProto, HloProto,
     HloSnapshot, XLAComputation, HloMap, HloGetTupleElement, XLAScalar,
@@ -13,15 +13,31 @@ function grab_ir(f, argtypes)
     ir = Compiler.inflate_ir(ci, mi)
 end
 
+macro check_ir(cond, args...)
+    @assert length(args) <= 1
+    reason = length(args) == 0 ? nothing : esc(args[1])
+    quote
+        if !$(esc(cond))
+            throw(NotOffloadableError($(esc(:ir)), $(esc(:sv)), $(reason)))
+        end
+    end
+end
+
 # A representation of HloIf that takes two IRCodes to represent the computations
 struct _HloIf <: HloOp{:conditional}
     if_func::IRCode
     else_func::IRCode
 end
 
-Base.show(io::IO, hloif::_HloIf) = print(io, "_HloIf(<omitted>)")
+struct _HloWhile <: HloOp{:while}
+    condition_func::IRCode
+    body_func::IRCode
+end
 
-function outline_bb(ir, bb_to_outline, merge_phi)
+Base.show(io::IO, hloif::_HloIf) = print(io, "_HloIf(<omitted>)")
+Base.show(io::IO, hloif::_HloWhile) = print(io, "_HloWhile(<omitted>)")
+
+function outline_bb(ir, bb_to_outline)
     block = ir.cfg.blocks[bb_to_outline]
     # For now disallow using any values outside the if
     @assert all(block.stmts) do idx
@@ -43,13 +59,237 @@ function outline_bb(ir, bb_to_outline, merge_phi)
         # If we did have SSA values, we'd rename them here
         Compiler.append_node!(outlined_ir, ir.types[idx], copy(stmt), 0)
     end
+    return outlined_ir
+end
+
+function outline_if_bb(ir, bb_to_outline, merge_phi)
+    ourlined_rr = outline_bb(ir, bb_to_outline)
     edge_idx = findfirst(==(bb_to_outline), merge_phi.edges)
     val_id = (merge_phi.values[edge_idx]::SSAValue).id
     Compiler.append_node!(outlined_ir, ir.types[val_id], ReturnNode(SSAValue(val_id - first(block.stmts) + 1)), 0)
     return outlined_ir
 end
 
-function outline_control_flow!(ir)
+function outline_loop_block(ir, bb_to_outline, types, phi_nodes, used_from_outside, is_header=false)
+    block = ir.cfg.blocks[bb_to_outline]
+    outlined_ir = IRCode(Any[], Any[], Int32[], UInt8[], Compiler.CFG(BasicBlock[
+        BasicBlock(Compiler.StmtRange(1, 0))
+    ], Int64[]), LineInfoNode[], Any[], Any[], Core.svec())
+    ncarried_vals = length(phi_nodes)+length(used_from_outside)
+    for i in 1:ncarried_vals
+        Compiler.append_node!(outlined_ir, types[i], Expr(:call, Core.getfield, Compiler.Argument(2), i), 0)
+    end
+    for idx in block.stmts
+        stmt = ir.stmts[idx]
+        isa(stmt, GotoNode) && continue
+        if isa(stmt, PhiNode)
+            continue
+        end
+        stmt′ = isa(stmt, Expr) ? copy(stmt) : stmt
+        urs = userefs(stmt′)
+        for op in urs
+            val = op[]
+            if isa(val, SSAValue)
+                if val.id in block.stmts && !isa(ir.stmts[val.id], PhiNode)
+                    op[] = SSAValue(val.id - first(block.stmts) + ncarried_vals + 1 - (is_header ? length(phi_nodes) : 0))
+                else
+                    found = findfirst(e->e.first==val, phi_nodes)
+                    if found == nothing
+                        found = findfirst(==(val), used_from_outside) + length(phi_nodes)
+                        @assert found !== nothing
+                    end
+                    op[] = SSAValue(found)
+                end
+            elseif isa(val, Compiler.Argument)
+                op[] = SSAValue(findfirst(==(val), used_from_outside) + length(phi_nodes))
+            end
+        end
+        stmt′ = urs[]
+        Compiler.append_node!(outlined_ir, ir.types[idx], stmt′, 0)
+    end
+    return outlined_ir
+end
+
+function outline_loop_header(ir, bb_to_outline, types, phi_nodes, used_from_outside)
+    outlined_ir = outline_loop_block(ir, bb_to_outline, types, phi_nodes, used_from_outside, true)
+    branch = outlined_ir.stmts[end]
+    outlined_ir.stmts[end] = ReturnNode(branch.cond)
+    outlined_ir.types[end] = Bool
+    return outlined_ir
+end
+
+function outline_loop_body(ir, bb_to_outline, types, phi_nodes, used_from_outside)
+    block = ir.cfg.blocks[bb_to_outline]
+    ncarried_vals = length(phi_nodes)+length(used_from_outside)
+    outlined_ir = outline_loop_block(ir, bb_to_outline, types, phi_nodes, used_from_outside)
+    # Reconstruct the loop carried tuple
+    args = Any[]
+    for (_, phi) in phi_nodes
+        idx = findfirst(==(bb_to_outline), phi.edges)
+        push!(args, SSAValue(phi.values[idx].id - first(block.stmts) + ncarried_vals + 1))
+    end
+    # The rest just gets carried through
+    for i in 1:length(used_from_outside)
+        push!(args, SSAValue(length(phi_nodes) + i))
+    end
+    tuple_type = Compiler.tuple_tfunc(types)
+    Compiler.append_node!(outlined_ir, tuple_type, Expr(:call, Core.tuple, args...), 0)
+    Compiler.append_node!(outlined_ir, tuple_type, ReturnNode(SSAValue(length(outlined_ir.stmts))), 0)
+    return outlined_ir
+end
+
+function erase_block!(ir, bbidx)
+    block = ir.cfg.blocks[bbidx]
+    ir.stmts[block.stmts[1:end-1]] .= nothing
+    ir.stmts[block.stmts[end]] = ReturnNode()
+    empty!(ir.cfg.blocks[bbidx].preds)
+    empty!(ir.cfg.blocks[bbidx].succs)
+end
+
+function outline_loop!(ir, sv)
+    bbs = ir.cfg.blocks
+    length(bbs) == 1 && return ir
+    display(ir)
+    bb1_term = ir.stmts[bbs[1].stmts[end]]
+    @assert !isa(bb1_term, GotoIfNot)
+    if isa(bb1_term, GotoNode)
+        loop_header = bb1_term.label
+    else
+        loop_header = 2
+    end
+    loop_header_bb = ir.cfg.blocks[loop_header]
+    @assert length(loop_header_bb.preds) == 2
+    loop_cond = ir.stmts[loop_header_bb.stmts[end]]
+    @assert isa(loop_cond, GotoIfNot)
+    (bb1, bb2) = (loop_header + 1, loop_cond.dest)
+    if isa(ir.stmts[bbs[bb1].stmts[end]], ReturnNode)
+        exit_block = bb1
+        loop_latch = bb2
+    else
+        @assert isa(ir.stmts[bbs[bb2].stmts[end]], ReturnNode)
+        exit_block = bb2
+        loop_latch = bb1
+    end
+    # First identify everything that needs to be in our loop carry
+    used_from_outside = Union{Compiler.Argument, SSAValue}[]
+    used_outside = SSAValue[]
+    phi_nodes = Pair{SSAValue,PhiNode}[]
+    for bb in (loop_header, loop_latch)
+        stmt_range = bbs[bb].stmts
+        for stmt_idx in stmt_range
+            stmt = ir.stmts[stmt_idx]
+            # We handle PhiNodes separately
+            if isa(stmt, PhiNode)
+                push!(phi_nodes, SSAValue(stmt_idx)=>stmt)
+                continue
+            end
+            urs = userefs(stmt)
+            for op in urs
+                val = op[]
+                if isa(val, SSAValue)
+                    # If it's in our current basic block, we don't care
+                    val.id in stmt_range && continue
+                    # Else find out which bb it's in
+                    val_bb = block_for_inst(ir.cfg, val.id)
+                    # TODO: If something from the loop header (other than a loop
+                    # carried phi) is used in the loop latch it needs to be duplicated.
+                    val_bb == loop_header && continue
+                elseif !isa(val, Compiler.Argument)
+                    continue
+                end
+                push!(used_from_outside, val)
+            end
+        end
+    end
+    # TODO: This should iterate over all outside blocks dominated by the loop header
+    for bb in (exit_block,)
+        stmt_range = ir.cfg.blocks[bb].stmts
+        for stmt_idx in stmt_range
+            stmt = ir.stmts[stmt_idx]
+            foreachssa(stmt) do val
+                val_bb = block_for_inst(ir.cfg, val.id)
+                (val_bb == loop_header) || return
+                push!(used_outside, val)
+            end
+        end
+    end
+    types = Any[]
+    ssa_order = Any[]
+    for (val, _) in phi_nodes
+        push!(ssa_order, val)
+        push!(types, argextype(val, ir, sv.sp))
+    end
+    for val in used_from_outside
+        push!(ssa_order, val)
+        push!(types, argextype(val, ir, sv.sp))
+    end
+    # We put these in a tuple in the order (phi_nodes..., used_from_outside...)
+    # Replace Phi nodes by getfield calls
+    tuple_T = Compiler.tuple_tfunc(types)
+    cond_ir = outline_loop_header(ir, loop_header, types, phi_nodes, used_from_outside)
+    append!(cond_ir.argtypes, [nothing, tuple_T])
+    display(cond_ir)
+    body_ir = outline_loop_body(ir, loop_latch, types, phi_nodes, used_from_outside)
+    display(body_ir)
+    append!(body_ir.argtypes, [nothing, tuple_T])
+
+    # Now erase the blocks we outlined
+    erase_block!.((ir,), (loop_header, loop_latch))
+    # Fix the CFG
+    entry_succs, exit_preds = ir.cfg.blocks[1].succs, ir.cfg.blocks[exit_block].preds
+    empty!(entry_succs); empty!(exit_preds)
+    push!(entry_succs, exit_block); push!(exit_preds, 1)
+    # Insert a GotoNode at the end of the entry block
+    insert_node!(ir, bbs[1].stmts[end], Any, GotoNode(exit_block), true)
+    # Assemble the initial execution tuple
+    initial_args = Any[]
+    for (_, node) in phi_nodes
+        push!(initial_args, node.values[findfirst(==(1), node.edges)])
+    end
+    append!(initial_args, used_from_outside)
+    first_exit_pos = bbs[exit_block].stmts[1]
+    initial = insert_node!(ir, first_exit_pos, tuple_T,
+        Expr(:call, Core.tuple, initial_args...), false)
+    # Insert our while node at the top of the exit_block
+    while_return = insert_node!(ir, first_exit_pos, tuple_T,
+        Expr(:call, _HloWhile(cond_ir, body_ir), initial), false)
+    # Insert destructuring calls
+    used_outside_replacement = Any[]
+    for u in used_outside
+        idx = findfirst(==(u), ssa_order)
+        push!(used_outside_replacement,
+            insert_node!(ir, first_exit_pos, types[idx],
+                Expr(:call, Core.getfield, while_return, idx), false))
+    end
+    # Replace any outside uses of loop values
+    for bb in (exit_block,)
+        stmt_range = ir.cfg.blocks[bb].stmts
+        for stmt_idx in stmt_range
+            stmt = ir.stmts[stmt_idx]
+            urs = userefs(stmt)
+            for op in urs
+                val = op[]
+                if isa(val, SSAValue) && val in used_outside
+                    op[] = used_outside_replacement[findfirst(==(val), used_outside)]
+                end
+            end
+            ir.stmts[stmt_idx] = urs[]
+        end
+    end
+    @Base.show used_outside
+    @Base.show used_from_outside
+    display(ir)
+    ir = Compiler.compact!(ir)
+    Compiler.verify_ir(ir)
+    ir = Compiler.cfg_simplify!(ir)
+    Compiler.verify_ir(ir)
+    display(ir)
+    #error()
+    ir
+end
+
+function outline_control_flow!(ir, sv)
+    return outline_loop!(ir, sv)
     # Simple version for experiments: Assume each branch of the if has
     # exactly one basic block
     if !isa(ir.stmts[ir.cfg.blocks[1].stmts[end]], GotoIfNot)
@@ -82,11 +322,7 @@ function outline_control_flow!(ir)
         cond = cond_stmt.args[4]
         ir.stmts[ir.cfg.blocks[join_block].stmts[1]] = Expr(:call, inst, cond, nothing, nothing)
         # Delete divergence blocks
-        for bbidx in divergence_blocks
-            block = ir.cfg.blocks[bbidx]
-            ir.stmts[block.stmts[1:end-1]] .= nothing
-            ir.stmts[block.stmts[end]] = ReturnNode()
-        end
+        erase_block!.((ir,), divergence_blocks)
         # Fix CFG
         let cb_succs = ir.cfg.blocks[split_block].succs, jb_preds = ir.cfg.blocks[join_block].preds
             empty!(cb_succs); empty!(jb_preds);
@@ -120,7 +356,7 @@ function process_function_argument(argvals, sig, idx, ir, stmt, sparams)
 end
 
 function _compile_to_xla!(computations, comp, ir, sv)
-    ir = outline_control_flow!(ir)
+    ir = outline_control_flow!(ir, sv)
     Base.display(ir)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
@@ -169,6 +405,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
     for (stmt_idx, stmt) in pairs(ir.stmts)
         isa(stmt, Nothing) && continue
         isa(stmt, ReturnNode) && continue
+        @check_ir !isa(stmt, PhiNode) "Unsupported control flow found in function"
         if isa(stmt, PiNode)
             continue
             #ssa_vals[stmt_idx] = hlo_eval(stmt.args[1])
@@ -195,13 +432,13 @@ function _compile_to_xla!(computations, comp, ir, sv)
         if isa(stmt, GlobalRef) && isa(argextype(stmt, ir, sparams), Const)
             continue
         end
-        if !isexpr(stmt, :invoke) && !(isexpr(stmt, :call) && isa(stmt.args[1], _HloIf))
+        if !isexpr(stmt, :invoke) && !(isexpr(stmt, :call) && (isa(stmt.args[1], _HloIf) || isa(stmt.args[1], _HloWhile)))
             @Base.show stmt
             Base.display(ir)
             error("Unrecognized expr")
         end
         hlo_inst = isexpr(stmt, :invoke) ? stmt.args[2] : stmt.args[1]
-        hlo_inst = argextype(hlo_inst, ir, sv.sp)
+        hlo_inst = argextype(hlo_inst, ir, sparams)
         hlo_inst = hlo_inst.val
         if isa(hlo_inst, HloOp)
             if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce)
@@ -282,14 +519,36 @@ function _compile_to_xla!(computations, comp, ir, sv)
                     _compile_to_xla!(computations, comp′, ir′, nothing)
                     push!(proto.called_computation_ids, comp′.id)
                 end
+            elseif isa(hlo_inst, _HloWhile)
+                initial = hlo_eval(stmt.args[2])
+                while_type = ir.types[stmt_idx]
+                tuple_T = hlo_inst.condition_func.argtypes[2]
+                shape = dtype_to_shape(tuple_T)
+                proto = HloInstructionProto(comp,
+                    GenericHloOp{:while}(Float32, ()), initial,
+                    shape = shape)
+                proto.called_computation_ids = Int64[]
+                for ir′ in (hlo_inst.body_func, hlo_inst.condition_func)
+                    comp′ = HloComputationProto(
+                        name = "comp$(length(computations))",
+                        instructions = HloInstructionProto[ ],
+                        id = length(computations)
+                    )
+                    #instr = HloInstructionProto(comp′, "parameter")
+                    #instr.shape = shape
+                    #instr.parameter_number = 0
+                    pushfirst!(computations, comp′)
+                    _compile_to_xla!(computations, comp′, ir′, nothing)
+                    push!(proto.called_computation_ids, comp′.id)
+                end
             else
                 args = map(hlo_eval, stmt.args[3:end])
-                shape = Shape(shape_infer(hlo_inst, map(arg->argextype(arg, ir, sv.sp), stmt.args[3:end])...)...)
+                shape = Shape(shape_infer(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...)...)
                 proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
             end
             ssa_vals[stmt_idx] = proto
         elseif isa(hlo_inst, Type) && hlo_inst <: XRTArray
-            ty = argextype(stmt.args[3], ir, sv.sp)
+            ty = argextype(stmt.args[3], ir, sparams)
             if isa(ty, Const) && isa(ty.val, XLAScalar)
                 ssa_vals[stmt_idx] = HloInstructionProto(comp, HloConstant(ty.val))
             else
@@ -300,8 +559,8 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 ssa_vals[stmt_idx] = hlo_eval(stmt.args[3])
             end
         elseif hlo_inst == Base.convert
-            ty = argextype(stmt.args[3], ir, sv.sp)
-            arg = argextype(stmt.args[4], ir, sv.sp)
+            ty = argextype(stmt.args[3], ir, sparams)
+            arg = argextype(stmt.args[4], ir, sparams)
             if arg <: XRTArray{<:Any, (), 0} && isa(ty, Const) && ty.val == eltype(arg)
                 # Allow conversions from a scalar array to its element
                 # type and codegen it as a no-op.
@@ -329,21 +588,11 @@ end
 
 function Base.showerror(io::IO, e::NotOffloadableError)
     println(io, "The specified function is not offloadable. The offending IR was:")
-    println(io, e.ir)
+    Base.IRShow.show_ir(stdout, e.ir; verbose_linetable=true)
     if isa(e.reason, String)
         println(io, e.reason)
     elseif isa(e.reason, Function)
         e.reason(io, e.ir, e.sv)
-    end
-end
-
-macro check_ir(cond, args...)
-    @assert length(args) <= 1
-    reason = length(args) == 0 ? nothing : esc(args[1])
-    quote
-        if !$(esc(cond))
-            throw(NotOffloadableError($(esc(:ir)), $(esc(:sv)), $(reason)))
-        end
     end
 end
 
@@ -448,7 +697,6 @@ function explain_suboptimal_inference(sig, bt=Base.StackFrame[])
 end
 
 function compile_to_xla(ir, sv)
-    @check_ir length(ir.cfg.blocks) == 1 "The called function may only have one basic block"
     # TODO: Since all HLO operations are essentially effect free, we could just have
     # a compilation result that throws this error.
     @check_ir isa(ir.stmts[end], ReturnNode) && isdefined(ir.stmts[end], :val) analyze_unreachable

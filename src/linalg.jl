@@ -75,7 +75,7 @@ Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
 Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
-Base.sqrt(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, XRTArray(0.5))
+Base.sqrt(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, XRTArray(0.5f0))
 @eval Base.isless(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
 @eval Base.:<=(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
@@ -336,27 +336,28 @@ function LinearAlgebra.norm(A::XRTArray, p::Real)
     error("Not implemented")
 end
 
-function Base.setindex(A::XRTVector{T}, v::T, i::Int64) where {T}
+function Base.setindex(A::XRTVector{T}, v::T, i::XRTArray{<:Integer, (), 0}) where {T}
     Base.setindex(A, XRTArray{T, (), 0}(v), i)
 end
-function Base.setindex(A::XRTVector{T}, v::XRTArray{T, (), 0}, i::Int64) where {T}
+function Base.setindex(A::XRTVector{T}, v::XRTArray{T, (), 0}, i::XRTArray{<:Integer, (), 0}) where {T}
     # TODO: It would be better to handle the dim mapping internally,
     # but that requires access to the julia element type, which we don't currently
     # expose
     vb = HloBroadcast(ntuple(i->i-1, ndims(T)), ntuple(_->1, ndims(A)))(v)
-    inds = HloBroadcast((), (1,))(XRTArray{Int64, (), 0}(i))
+    inds = HloBroadcast((), (1,))(i)
     if ndims(T) != 0
         ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
         inds = HloConcatenate(0)(ones, inds)
     end
     HloDynamicUpdateSlice()(A, vb, inds)
 end
+Base.setindex(A::XRTVector, v, i::Int64) = Base.setindex(A, v, XRTArray{Int64, (), 0}(i))
 
-function Base.getindex(A::XRTVector{T}, i::Int64) where {T}
+function Base.getindex(A::XRTVector{T}, i::XRTArray{<:Integer, (), 0}) where {T}
     # TODO: It would be better to handle the dim mapping internally,
     # but that requires access to the julia element type, which we don't currently
     # expose
-    inds = HloBroadcast((), (1,))(XRTArray{Int64, (), 0}(i))
+    inds = HloBroadcast((), (1,))(i)
     sizes = ntuple(_->1, ndims(A))
     if ndims(T) != 0
         ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
@@ -367,3 +368,4 @@ function Base.getindex(A::XRTVector{T}, i::Int64) where {T}
     ret = HloReshape(size(T))(ret)
     convert(T, ret)
 end
+Base.getindex(A::XRTVector, i::Int64) = Base.getindex(A, XRTArray{Int64, (), 0}(i))
