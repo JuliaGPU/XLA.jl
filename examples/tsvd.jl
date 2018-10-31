@@ -43,24 +43,20 @@ function test(A, initvec, ::Val{maxsteps}) where {maxsteps}
     U  = setindex(U, u, 2)
     βs = setindex(βs, β, 1)
 
-    i = 1
-    j = 1
+    i = XRTArray(2)
+    while convert(Bool, i <= XRTArray(maxsteps))
+        # A'u
+        v = A'u - β*v
+        ## reorthogonalize
+        v -= V[i]*(V[i]'v)
 
-    v = A'u - β*v
-    v -= V[i]*(V[i]'v)
-    α  = norm(v)
-    v /= α
-    αs = setindex(αs, α, j)
-    V  = setindex(V, v, j)
-    # A*v
-    u  = A*v - α*u
-    ## reorthogonalize
-    u -= U[i]*(U[i]'u)
+        α  = norm(v)
+        v /= α
+        αs = setindex(αs, α, i)
+        V  = setindex(V, v, i)
 
-    β  = norm(u)
-    u /= β
-    βs = setindex(βs, β, j)
-    U  = setindex(U, u, j + 1)
+        i += XRTArray(1)
+    end
+    return αs, βs, U, V
 end
-XLA.code_typed_xla(test, Tuple{typeof(A), typeof(initvec), Val{5}})[1]
 @tpu_compile test(A, initvec, Val(5))
