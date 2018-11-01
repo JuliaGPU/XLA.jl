@@ -40,7 +40,7 @@ function Base.close(c::XRTCompilation)
             # This runs as a finalizer. The error gets printed using the
             # C printer rather than the julia one. Transform the error
             # message to make sure it's readable
-            ccall(:jl_, Cvoid, (Any,), c)
+            isa(err, TensorFlow.TFException) || rethrow(err)
             error(string("TensorFlow error: ", string(err.status)))
         end
     end
@@ -115,6 +115,7 @@ function Base.close(c::XRTAllocation)
     try
         run(c.sess, tf.Tensor(tf.Operation(desc2)))
     catch err
+        isa(err, TensorFlow.TFException) || rethrow(err)
         error(string("TensorFlow error: ", string(err.status)))
     end
     Core.setfield!(c, :h, -1)
