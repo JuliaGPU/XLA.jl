@@ -1,6 +1,6 @@
-# XLAHacks.jl - An XLA compiler prototype for julia
+# XLA.jl - Compiling Julia to XLA
 
-WARNING: This is extremely ugly code. Use for demo only ;).
+NOTE: We're in the process of adding better instructions. Check back in a bit.
 
 # Quick start quide
 - Grab julia on branch [kf/tpu3](https://github.com/JuliaLang/julia/tree/kf/tpu3)
