@@ -18,6 +18,7 @@ module XLA
     include("execute.jl")
     include("emulate.jl")
     include("linalg.jl")
+    include("explain.jl")
     include("compiler.jl")
     include("compiler_passes.jl")
     include("compiler_interface.jl")
