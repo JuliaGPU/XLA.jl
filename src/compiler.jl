@@ -77,7 +77,6 @@ function outline_if_bb(ir, bb_to_outline, types, used_from_outside, merge_phi)
 end
 
 function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used_from_outside, is_header=false)
-    @Base.show bbs_to_outline
     bbs = ir.cfg.blocks
     outlined_ir = IRCode(Any[], Any[], Int32[], UInt8[], Compiler.CFG(BasicBlock[
         BasicBlock(Compiler.StmtRange(1, 0))
@@ -103,7 +102,6 @@ function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used
             for op in urs
                 val = op[]
                 if isa(val, SSAValue)
-                    @Base.show stmt
                     val_bb = block_for_inst(ir.cfg, val.id)
                     bb_idx = findfirst(==(val_bb), bbs_to_outline)
                     if bb_idx !== nothing && !isa(ir.stmts[val.id], PhiNode)
@@ -333,11 +331,9 @@ function outline_loop!(ir, sv, domtree, loop_header)
     tuple_T = Compiler.tuple_tfunc(types)
     cond_ir = outline_loop_header(ir, domtree, loop_header, types, phi_nodes, used_from_outside)
     append!(cond_ir.argtypes, [nothing, tuple_T])
-    display(cond_ir)
     Compiler.verify_ir(cond_ir)
     body_ir = outline_loop_body(ir, domtree, loop_body_blocks, types, phi_nodes, used_from_outside)
     append!(body_ir.argtypes, [nothing, tuple_T])
-    display(body_ir)
     Compiler.verify_ir(body_ir)
 
     # Now erase the blocks we outlined
@@ -383,8 +379,6 @@ function outline_loop!(ir, sv, domtree, loop_header)
             ir.stmts[stmt_idx] = urs[]
         end
     end
-    @Base.show used_outside
-    @Base.show used_from_outside
     ir = Compiler.compact!(ir)
     Compiler.verify_ir(ir)
     ir
@@ -434,7 +428,6 @@ function outline_if!(ir, sv, domtree, split_block, join)
     else_types = Any[argextype(arg, ir, sv.sp) for arg in all_used_from_outside[2]]
     else_tuple_T = Compiler.tuple_tfunc(else_types)
     else_func = outline_if_bb(ir, divergence_blocks[2], else_types, all_used_from_outside[2], phi_node)
-    @Base.show (if_tuple_T, else_tuple_T)
     append!(if_func.argtypes, [nothing, if_tuple_T])
     append!(else_func.argtypes, [nothing, else_tuple_T])
     inst = _HloIf(if_func, else_func)
@@ -464,7 +457,6 @@ function outline_if!(ir, sv, domtree, split_block, join)
         block = ir.cfg.blocks[bbidx]
         empty!(block.preds); empty!(block.succs)
     end
-    display(ir)
     ir = Compiler.compact!(ir)
     Compiler.verify_ir(ir)
     ir
@@ -472,7 +464,6 @@ end
 
 function outline_control_flow!(ir, sv)
     bbs = ir.cfg.blocks
-    display(ir)
     length(bbs) == 1 && return ir
 
     domtree = Compiler.construct_domtree(ir.cfg);
@@ -509,7 +500,6 @@ end
 
 function _compile_to_xla!(computations, comp, ir, sv)
     ir = outline_control_flow!(ir, sv)
-    Base.display(ir)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
     sparams = sv === nothing ? Core.svec() : sv.sp
@@ -661,6 +651,13 @@ function _compile_to_xla!(computations, comp, ir, sv)
                         instructions = HloInstructionProto[ ],
                         id = length(computations)
                     )
+                    # Having a paremeter instruction is required, so if we don't
+                    # otherwise have it, add it manually
+                    if !representable(widenconst(ir′.argtypes[2]))
+                        instr = HloInstructionProto(comp′, "parameter")
+                        instr.shape = dtype_to_shape(Tuple{})
+                        instr.parameter_number = 0
+                    end
                     pushfirst!(computations, comp′)
                     _compile_to_xla!(computations, comp′, ir′, nothing)
                     push!(proto.called_computation_ids, comp′.id)
@@ -680,6 +677,11 @@ function _compile_to_xla!(computations, comp, ir, sv)
                         instructions = HloInstructionProto[ ],
                         id = length(computations)
                     )
+                    if !representable(widenconst(ir′.argtypes[2]))
+                        instr = HloInstructionProto(comp′, "parameter")
+                        instr.shape = dtype_to_shape(Tuple{})
+                        instr.parameter_number = 0
+                    end
                     pushfirst!(computations, comp′)
                     _compile_to_xla!(computations, comp′, ir′, nothing)
                     push!(proto.called_computation_ids, comp′.id)
@@ -744,7 +746,6 @@ function synthesize_bt_for_line(ir, line)
     frames = Base.StackFrame[]
     while entry !== 0
         lin = ir.linetable[entry]
-        @Base.show lin
         push!(frames, Base.StackFrame(lin.method,  lin.file, lin.line, nothing, false, lin.inlined_at != 0, C_NULL))
         entry = lin.inlined_at
     end
@@ -796,8 +797,6 @@ function explain_suboptimal_inference(sig, bt=Base.StackFrame[])
     (ci, ty, slottypes) = typeinf_code_slottypes(mi, false, params)
     ir = Compiler.inflate_ir(ci, Compiler.spvals_from_meth_instance(mi),
                              Compiler.matching_cache_argtypes(mi, nothing)[1])
-    @Base.show ir
-    @Base.show slottypes
     empty!(ir.argtypes); append!(ir.argtypes, slottypes)
     sv = Compiler.OptimizationState(mi, params)
     for (idx, (stmt, type)) in enumerate(zip(ir.stmts, ir.types))
@@ -831,7 +830,6 @@ function explain_suboptimal_inference(sig, bt=Base.StackFrame[])
                     Base.show_backtrace(stdout, reverse(bt))
                     return
                 end
-                @Base.show atys
                 nsig = Tuple{atys...}
                 return explain_suboptimal_inference(nsig, bt)
             end

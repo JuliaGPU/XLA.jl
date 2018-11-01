@@ -19,6 +19,22 @@ function Base.:*(A::Adjoint{<:Any, <:XRTVector}, B::XRTVector)
     HloDot(ddots)(A.parent, B)
 end
 
+function Base.:*(A::Transpose{<:Any, <:XRTArray}, B::XRTArray)
+    ddots = DimNums((1,), (0,), (), ())
+    HloDot(ddots)(HloTranspose((1,0))(A.parent), B)
+end
+
+function Base.:*(A::XRTArray, B::Transpose{<:Any, <:XRTArray})
+    ddots = DimNums((1,), (0,), (), ())
+    HloDot(ddots)(A, HloTranspose((1,0))(B.parent))
+end
+
+function Base.:*(A::Transpose{<:Any, <:XRTVector}, B::XRTVector)
+    ddots = DimNums((0,), (0,), (), ())
+    HloDot(ddots)(A.parent, B)
+end
+
+
 const XRTScalar{T} = XRTArray{T, (), 0}
 @noinline Base.convert(::Type{Bool}, A::XRTScalar{Bool}) = convert(Array, A)[]
 function Base.promote_rule(A::Type{XRTScalar{T}}, B::Type{XRTScalar{S}}) where {T<:XLAScalar, S<:XLAScalar}
