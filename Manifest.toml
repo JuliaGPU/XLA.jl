@@ -477,9 +477,9 @@ uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
 version = "0.6.1"
 
 [[ProtoBuf]]
-deps = ["Compat"]
-git-tree-sha1 = "7ac0dc639ab647050a35edeb74d92fac97839e1a"
-repo-rev = "kf/setproperty"
+deps = ["Random", "Serialization", "Sockets", "Test"]
+git-tree-sha1 = "cc57b8d2d37f51f9bdfb440ba933c75764e6e171"
+repo-rev = "master"
 repo-url = "https://github.com/JuliaIO/ProtoBuf.jl.git"
 uuid = "3349acd9-ac6a-5e09-bcdb-63829b23a429"
 version = "0.6.1+"
