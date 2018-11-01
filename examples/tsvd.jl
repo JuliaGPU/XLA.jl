@@ -13,11 +13,12 @@ pop!(Base.Multimedia.displays)
 
 StaticArrays.similar_type(A::XRTArray{T}, s::Size{Sz}) where {T, Sz} = XRTArray{T, Sz, length(Sz)}
 StaticArrays.similar_type(A::XRTArray{T}, ::Type{S}, s::Size{Sz}) where {T, S, Sz} = XRTArray{S, Sz, length(Sz)}
-A = XRTArray(randn(10, 10))
-initvec = XRTArray(randn(10))
+A = XRTArray(randn(Float32, 10, 10))
+initvec = XRTArray(randn(Float32, 10))
 maxsteps = 5
 
-
+# Please excuse some of the messiness with manually wrapping
+# the scalars below. That's be taken care of shortly.
 function test(A, initvec, ::Val{maxsteps}) where {maxsteps}
     m, n = size(A)
 
@@ -43,19 +44,46 @@ function test(A, initvec, ::Val{maxsteps}) where {maxsteps}
     U  = setindex(U, u, 2)
     βs = setindex(βs, β, 1)
 
-    i = XRTArray(2)
-    while convert(Bool, i <= XRTArray(maxsteps))
+    j = XRTArray(2)
+    while convert(Bool, j <= XRTArray(maxsteps))
         # A'u
         v = A'u - β*v
-        ## reorthogonalize
-        v -= V[i]*(V[i]'v)
+        i = XRTArray(1)
+        while convert(Bool, i <= j - XRTArray(1))
+            ## reorthogonalize
+            v -= V[i]*(V[i]'v)
+            i += XRTArray(1)
+        end
 
         α  = norm(v)
-        v /= α
-        αs = setindex(αs, α, i)
-        V  = setindex(V, v, i)
 
-        i += XRTArray(1)
+        # This is here for exercising the compiler only
+        # It's not part of the real code in TSVD.jl
+        if convert(Bool, α <= XRTArray(0.5f0))
+            v = A*v
+        else
+            v = A'v
+        end
+
+        v /= α
+        αs = setindex(αs, α, j)
+        V  = setindex(V, v, j)
+
+        # A*v
+        u  = A*v - α*u
+        ## reorthogonalize
+        i = XRTArray(1)
+        while convert(Bool, i <= j)
+            u -= U[i]*(U[i]'u)
+            i += XRTArray(1)
+        end
+
+        β  = norm(u)
+        u /= β
+        βs = setindex(βs, β, j)
+        U  = setindex(U, u, j + XRTArray(1))
+
+        j += XRTArray(1)
     end
     return αs, βs, U, V
 end
