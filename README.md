@@ -12,7 +12,10 @@ Julia and/or TPUs. If you're already familiar with both, you may skip the tutori
 and just use the setup guide below. The tutorial will open in Google Cloud Shell,
 by clicking the button below:
 
-[![Open in Cloud Shell](http://gstatic.com/cloudssh/images/open-btn.svg)](https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FJuliaTPU%2FXLA.jl&cloudshell_tutorial=docs%2Ftpu_tutorial.md)
+<p align="center">
+<a href="https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FJuliaTPU%2FXLA.jl&cloudshell_tutorial=docs%2Ftpu_tutorial.md">
+<img alt="Open in Cloud Shell" src ="http://gstatic.com/cloudssh/images/open-btn.svg"></a>
+</p>
 
 # Getting started (CPU/GPU backend)
 - Grab julia on branch [kf/tpu3](https://github.com/JuliaLang/julia/tree/kf/tpu3) (Prebuilt Linux x86_64 binaries with TPU support are available [here](https://storage.googleapis.com/julia-tpu-binaries/julia.v1.1.0-kf.tpu3.x86_64-linux-gnu.tar.gz))
