@@ -14,7 +14,7 @@ you can get access to TPUs through the notebook interface. Start with the instal
 notebook in `docs/colab/InstallJuliaXLA.ipynb`:
 
 <p align="center">
-<a href="https://colab.research.google.com/JuliaTPU/XLA.jl/blob/master/docs/colab/InstallJuliaXLA.ipynb"><img src="https://www.tensorflow.org/images/colab_logo_32px.png" alt="Open in Colab"/><br/>Run in Google Colab</a>
+<a href="https://colab.research.google.com/github/JuliaTPU/XLA.jl/blob/master/docs/colab/InstallJuliaXLA.ipynb"><img src="https://www.tensorflow.org/images/colab_logo_32px.png" alt="Open in Colab"/><br/>Run in Google Colab</a>
 </p>
 
 Afterwards, any JuliaTPU notebook should work if opened without resetting the runtime
