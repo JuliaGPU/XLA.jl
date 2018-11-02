@@ -4,6 +4,24 @@ NOTE: We're in the process of adding better instructions. Check back in a bit.
 
 # Getting started on TPUs
 
+## Running on Colab
+
+Google currently offers free access to Cloud TPUs through its Colab notebook
+service. Colab does not officially support julia at the moment, but it is
+possible to install julia by manually installing it into the runtime (though
+this has to be done every time the runtime gets reset). By this mechanism,
+you can get access to TPUs through the notebook interface. Start with this notebook
+to install julia:
+
+https://colab.research.google.com/github/JuliaTPU/XLA.jl/blob/master/docs/InstallJuliaXLA.ipynb
+
+<a target=\"_blank\" href=\"https://colab.research.google.com/JuliaTPU/XLA.jl/blob/master/docs/colab/InstallJuliaXLA.ipynb"><img src=\"https://www.tensorflow.org/images/colab_logo_32px.png\" />Run in Google Colab</a>
+
+Afterwards, any JuliaTPU notebook should work if opened without resetting the runtime
+in between.
+
+## Running on GCP
+
 The process for setting up this repository to run against TPUs is much 
 the same as the process for setting up the repository locally. However, since
 there is additional steps involved in launching the actual TPU, we are providing
