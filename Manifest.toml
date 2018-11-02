@@ -192,6 +192,9 @@ git-tree-sha1 = "481e4db939f005db39f7296599d0543c0744fe30"
 uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 version = "1.0.2"
 
+[[FileWatching]]
+uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
+
 [[FixedPointNumbers]]
 deps = ["Test"]
 git-tree-sha1 = "b8045033701c3b10bf2324d7203404be7aef88ba"
@@ -528,6 +531,12 @@ git-tree-sha1 = "f6fbf4ba64d295e146e49e021207993b6b48c7d1"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "0.5.2"
 
+[[Revise]]
+deps = ["Distributed", "FileWatching", "InteractiveUtils", "LibGit2", "OrderedCollections", "Pkg", "REPL", "Random", "Test", "UUIDs", "Unicode"]
+git-tree-sha1 = "e7dc601551df647113d65a50f940ab19b2015f0b"
+uuid = "295af30f-e4ad-537b-8983-00126c2a3abe"
+version = "0.7.12"
+
 [[Rmath]]
 deps = ["BinaryProvider", "Libdl", "Random", "Statistics", "Test"]
 git-tree-sha1 = "9a6c758cdf73036c3239b0afbea790def1dabff9"
@@ -617,9 +626,9 @@ version = "0.3.0+"
 
 [[TensorFlow]]
 deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MLDatasets", "MacroTools", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
-git-tree-sha1 = "520e9cd60c62c87f6fbb95ec976f29be0597447c"
+git-tree-sha1 = "28ed5d7b036cc5a32c0fb16affd6a1d2c825bb12"
 repo-rev = "sf/xrt_server"
-repo-url = "https://github.com/staticfloat/TensorFlow.jl"
+repo-url = "https://github.com/JuliaComputing/TensorFlow.jl"
 uuid = "1d978283-2c37-5f34-9a8e-e9c0ece82495"
 version = "0.10.2+"
 
