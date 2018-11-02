@@ -1,4 +1,6 @@
+authors = ["Keno Fischer <keno@juliacomputing.com>", "Elliot Saba <elliot.saba@juliacomputing.com>"]
 name = "XLA"
+uuid = "1ae4bca4-de81-11e8-0eca-6d3e4e7c4181"
 
 [deps]
 Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
