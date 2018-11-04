@@ -121,8 +121,16 @@ function outline_loop_body(ir, domtree, bbs_to_outline, types, phi_nodes, used_f
     for (_, phi) in phi_nodes
         idx = findfirst(==(bbs_to_outline[end]), phi.edges)
         val = phi.values[idx]
+        # It's possible for a phi node to reference a previous phi
+        # node, in which case we can handle that
+        carried_phi = findfirst(x->x[1] == val, phi_nodes)
+        if carried_phi !== nothing
+            push!(args, SSAValue(carried_phi))
+            continue
+        end
         val_bb = block_for_inst(ir.cfg, val.id)
         bb_idx = findfirst(==(val_bb), bbs_to_outline)
+        @assert bb_idx !== nothing
         def_block = bbs[val_bb]
         block_local_id = val.id - first(def_block.stmts)
         push!(args, SSAValue(bb_starts[bb_idx] + block_local_id))

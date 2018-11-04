@@ -2,7 +2,7 @@
 const XLAScalar = Union{Bool, Int8, Int16, Int32, Int64,
                         UInt8, UInt16, UInt32, UInt64,
                         Float16, Float32, Float64, Complex{Float32}}
-const AnyXLA = Union{XRTArray, XLAScalar}
+const AnyXLA = Union{XRTArray, XLAScalar, HloToken}
 
 function build_computation(op::HloOp, args::AnyXLA...)
     comp = HloComputationProto(
@@ -82,6 +82,8 @@ end
 @noinline (op::HloDynamicSlice)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloDynamicUpdateSlice)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloConcatenate)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloInfeed)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloAfterAll)(args::AnyXLA...) = execute(op, args...)
 
 # This function is invoked via invokelatest which acts as an inference barrier.
 # Thus statically, we get the type given by `infer_rt`, while dynamically we get
@@ -103,3 +105,6 @@ end
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
 end
 
+@noinline function (m::HloMap{fT})(f::fT, args::XRTArray...) where {fT}
+    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), map(typeof, args)...)
+end

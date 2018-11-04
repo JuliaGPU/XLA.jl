@@ -44,6 +44,7 @@ function process_function_argument(argvals, sig, idx, ir, stmt, sparams)
 end
 
 function _compile_to_xla!(computations, comp, ir, sv)
+    display(ir)
     ir = outline_control_flow!(ir, sv)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
@@ -231,6 +232,12 @@ function _compile_to_xla!(computations, comp, ir, sv)
                     _compile_to_xla!(computations, comp′, ir′, nothing)
                     push!(proto.called_computation_ids, comp′.id)
                 end
+            elseif isa(hlo_inst, Union{HloInfeed, HloAfterAll})
+                args = map(hlo_eval, stmt.args[3:end])
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(typeof, args)...))
+                proto = HloInstructionProto(comp,
+                    hlo_inst, args...,
+                    shape = shape)
             else
                 args = map(hlo_eval, stmt.args[3:end])
                 shape = Shape(shape_infer(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...)...)
@@ -319,6 +326,11 @@ end
 
 dtype_to_shape(T::Type{<:XRTArray}) = convert(Shape, T)
 dtype_to_shape(T::Type{<:XLA.XLAScalar}) = dtype_to_shape(XRTArray{T, (), 0})
+function dtype_to_shape(T::Type{HloToken})
+    Shape(
+        element_type = xla.PrimitiveType.TOKEN
+    )
+end
 function dtype_to_shape(T::DataType)
     Shape(
         element_type = xla.PrimitiveType.TUPLE,

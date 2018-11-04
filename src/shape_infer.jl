@@ -18,7 +18,7 @@ ndims_match(a1::Type{<:XRTArray}, a2::Type{<:XRTArray}, args::Type{<:XRTArray}..
 
 shapes_match(_::Type{<:XRTArray}) = true
 shapes_match(a1::Type{<:XRTArray}, a2::Type{<:XRTArray}, args::Type{<:XRTArray}...) =
-    size(a1) == size(a2) && eltypes_match(a2, args...)
+    size(a1) == size(a2) && shapes_match(a2, args...)
 
 @Base.pure non_elt_args(T, shape) = shape[1+ndims(T):end]
 
@@ -154,9 +154,13 @@ function shape_infer(op::HloRev, A::Type{<:XRTArray})
     (eltype(A), size(A))
 end
 
+shape_infer(op::HloInfeed) = (op.infeed_shape.parameters[1],
+                              op.infeed_shape.parameters[2])
+
 function infer_rt(op::HloOp, args::Type...)
     T, shape = shape_infer(op, args...)
     XRTArray{T, shape, length(shape)}
 end
 
-
+infer_rt(op::HloInfeed, arg::Type) = Tuple{op.infeed_shape, HloToken}
+infer_rt(op::HloAfterAll, args::Type...) = HloToken

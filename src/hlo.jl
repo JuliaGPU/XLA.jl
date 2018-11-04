@@ -230,6 +230,15 @@ struct HloConcatenate <: HloOp{Symbol("concatenate")}
 end
 fill_fields!(proto::HloInstructionProto, r::HloConcatenate) = proto.dimensions = Int64[r.dim]
 
+struct HloInfeed{T} <: HloOp{Symbol("infeed")}
+    infeed_shape::Type{T}
+end
+fill_fields!(proto::HloInstructionProto, r::HloInfeed) = nothing
+
+struct HloAfterAll <: HloOp{Symbol("after-all")}
+end
+fill_fields!(proto::HloInstructionProto, r::HloAfterAll) = nothing
+
 function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_id(), name=nothing)
     proto = HloInstructionProto(
         opcode=opcode,

@@ -6,6 +6,20 @@ struct XlaType
     which::Int32
 end
 
+"""
+    The runtime representation of an HLO `token` type. This only matters
+    for creating happens-before chains in the compiled code. In dynamic
+    execution, happens-before is guaranteed by the statement order of
+    side effecting instructions.
+"""
+struct HloToken
+    # Tokens don't actually have any data, but we need to prevent
+    # the compiler from trying to constant prop it, so we give is
+    # some dummy data. If control was returned to the host, control
+    # flow order is already clear.
+    unused::Int32
+end
+
 const xla_type_mapping = Dict{Int32, Type}(
     xla.PrimitiveType.PRED => Bool,
     xla.PrimitiveType.S8   => Int8,
@@ -20,6 +34,7 @@ const xla_type_mapping = Dict{Int32, Type}(
     xla.PrimitiveType.F32  => Float32,
     xla.PrimitiveType.F64  => Float64,
     xla.PrimitiveType.C64  => Complex{Float32},
+    xla.PrimitiveType.TOKEN => HloToken,
 )
 const reverse_xla_type_mapping = Dict(v=>k for (k,v) in xla_type_mapping)
 

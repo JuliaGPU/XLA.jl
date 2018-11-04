@@ -93,3 +93,15 @@ macro tpu_compile(expr)
         end
     end
 end
+
+macro tpu(expr)
+    @assert isexpr(expr, :call)
+    quote
+        let f = $(esc(:(()->($expr))))
+            ir, sv = code_typed_xla(f, Tuple{})
+            compld = XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv)...)
+            run(compld)
+        end
+    end
+end
+

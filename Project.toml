@@ -1,9 +1,10 @@
-authors = ["Keno Fischer <keno@juliacomputing.com>", "Elliot Saba <elliot.saba@juliacomputing.com>"]
 name = "XLA"
 uuid = "1ae4bca4-de81-11e8-0eca-6d3e4e7c4181"
+authors = ["Keno Fischer <keno@juliacomputing.com>", "Elliot Saba <elliot.saba@juliacomputing.com>"]
 
 [deps]
 Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
+DiffRules = "b552c78f-8df3-52c6-915a-8e097449b14b"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 IRTools = "7869d1d1-7146-5819-86e3-90919afe41df"
@@ -14,8 +15,11 @@ JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Metalhead = "dbeba491-748d-5e0e-a39e-b530a07fa0cc"
 NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
+NaNMath = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
 ProtoBuf = "3349acd9-ac6a-5e09-bcdb-63829b23a429"
+ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 TensorFlow = "1d978283-2c37-5f34-9a8e-e9c0ece82495"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"

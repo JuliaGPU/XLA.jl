@@ -34,13 +34,13 @@ function Base.:*(A::Transpose{<:Any, <:XRTVector}, B::XRTVector)
     HloDot(ddots)(A.parent, B)
 end
 
+Base.convert(::Type{XRTArray}, x::XLAScalar) = XRTArray(x)
 
 const XRTScalar{T} = XRTArray{T, (), 0}
 @noinline Base.convert(::Type{Bool}, A::XRTScalar{Bool}) = convert(Array, A)[]
 function Base.promote_rule(A::Type{XRTScalar{T}}, B::Type{XRTScalar{S}}) where {T<:XLAScalar, S<:XLAScalar}
     XRTArray{promote_type(T, S), (), 0}
 end
-
 
 # Scalar conversions - Happens via HloConvert. In the future, we may
 # want to make sure to more closely match julia semantics.
@@ -53,12 +53,13 @@ for (binop, xlaop) in
          (:-, :subtract),
          (:/, :divide),
          (:*, :multiply))
-    @eval Base.$(binop)(A::XRTScalar{T,},
+    @eval Base.$(binop)(A::XRTScalar{T},
                         B::XRTScalar{T}) where {T<:XLAScalar} =
         GenericHloOp{$(quot(xlaop))}(T, ())(A, B)
-    @eval Base.$(binop)(args::XRTScalar{<:XLAScalar}...) =
-        $(binop)(promote(args...)...)
+    @eval Base.$(binop)(A::XRTScalar, B::XRTScalar, args::XRTScalar{<:XLAScalar}...) =
+        $(binop)(promote(A, B, args...)...)
 end
+
 
 # XRT Scalars are not numbers so import some functions manually
 import Base: /, \, *
@@ -91,11 +92,15 @@ Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
 Base.exp(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:exponential}(T, ())(A)
+Base.log(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:log}(T, ())(A)
 Base.sqrt(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, XRTArray(convert(T, 0.5)))
 @eval Base.isless(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
 @eval Base.:<=(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B)
+Base.inv(x::XRTScalar{T}) where {T} = XRTArray(one(T))/x
+
+Base.:-(x::XRTScalar{T}) where {T} = -(XRTArray(zero(T)), x)
 
 # XRTArrays are immutable. Copy is identity.
 Base.copy(A::XRTArray) = A
@@ -150,7 +155,7 @@ Broadcast.BroadcastStyle(::Type{<:XRTArray{<:Any,Dims,N}}) where {Dims, N} =
         collapse_dims = ccdims(size(arg))
         non_collapse_dims = ncdims(size(arg))
         if !isa(arg, XRTArray)
-            arg = XRTArray(fill(arg))
+            arg = convert(XRTArray, arg)
         end
         if collapse_dims != ()
             arg = HloReshape(
@@ -176,7 +181,7 @@ function Broadcast.copy(bc::Broadcast.Broadcasted{<:XRTArrayStyle})
         args = bc′.args
         # This could be axes(bc′) if we had better constant prop
         rsize = map(length, Broadcast.combine_axes(bc′.args...))
-        args = map(arg->broadcast_to_size(arg, rsize), bc′.args)
+        args = map(arg->convert(XRTArray, broadcast_to_size(arg, rsize)), bc′.args)
         return HloMap{typeof(bc′.f)}()(bc′.f, args...)
     end
     # TODO: Pull back CPU, do this there
