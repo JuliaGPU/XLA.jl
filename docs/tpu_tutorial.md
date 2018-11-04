@@ -86,11 +86,47 @@ Then set up XLA.jl as you would any julia package (hit `]` to get to the package
 pkg> instantiate
 ```
 
+## Let's compute something
+
+Start by loading the relevant packages
+```julia
+using XLA
+using TensorFlow
+pop!(Base.Multimedia.displays)
+```
+
+Set up the TPU session. Replace 10.240.1.2 with your TPU IP if it is different.
+```julia
+sess = Session(Graph(); target="grpc://10.240.1.2:8470")
+run(sess, TensorFlow.Ops.configure_distributed_tpu())
+```
+
+Code that has to be run on the TPU needs to be compiled for the TPU, along with its example input arguments (for the type and shape information).
+```julia
+f(x) = x*x
+data = XRTArray(rand(Float32,5,5))
+f_compiled = @tpu_compile f(data)
+```
+
+Run the compiled function on the data you want to.
+```julia
+run(f_compiled, data)
+```
+
+Let's see how fast a TPU core really is. We will time our matrix multiplication example on a larger matrix and divide the time by 2n^3. We sum up the result in order to not bring it back to the CPU. The time also includes the time for data transfer to the TPU, and hence the number of teraflops reported is conservative.
+```julia
+f(x) = sum(x*x)
+data = XRTArray(rand(Float32,10^4,10^4))
+f_compiled = @tpu_compile f(data)
+run(f_compiled, data)
+teraflops = @time run(f_compiled, data) / (2*(1e4)^3) / 1e12
+```
+
 ## You're now ready to use TPUs
 
 Congrats! We will add additional tutorial material here in the near future.
 
-## Clean up 
+## Clean up
 
 Once you're done, quit the vm
 
@@ -118,6 +154,6 @@ This will keep any data you may have added to the VM for your future use, but do
 
 Please file any issues you encounter in the issue tracker at [https://github.com/JuliaTPU/XLA.jl](https://github.com/JuliaTPU/XLA.jl)
 
-If you have a commerical interest in using TPUs, please contact Julia Computing at [info@juliacomputing.com](mailto:info@juliacomputing.com) for commercial support and assistance. 
+If you have a commerical interest in using TPUs, please contact Julia Computing at [info@juliacomputing.com](mailto:info@juliacomputing.com) for commercial support and assistance.
 
 <walkthrough-conclusion-trophy />
