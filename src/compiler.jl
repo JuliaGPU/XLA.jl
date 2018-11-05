@@ -44,7 +44,6 @@ function process_function_argument(argvals, sig, idx, ir, stmt, sparams)
 end
 
 function _compile_to_xla!(computations, comp, ir, sv)
-    display(ir)
     ir = outline_control_flow!(ir, sv)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
@@ -84,10 +83,10 @@ function _compile_to_xla!(computations, comp, ir, sv)
         if isa(arg, Compiler.Argument)
             return arg_instrs[arg.n]
         elseif isa(arg, SSAValue)
-            isassigned(ssa_vals, arg.id) || @show arg
+            @check_ir isassigned(ssa_vals, arg.id) "SSA value $(arg) not mapped to HLO"
             return ssa_vals[arg.id]
         else
-            error()
+            @check_ir false "Tried to evaluate $(arg) as an HLO argument"
         end
     end
     for (stmt_idx, stmt) in pairs(ir.stmts)
@@ -99,7 +98,13 @@ function _compile_to_xla!(computations, comp, ir, sv)
             #ssa_vals[stmt_idx] = hlo_eval(stmt.args[1])
         end
         if isexpr(stmt, :new) || (isexpr(stmt, :call) && Compiler.is_known_call(stmt, tuple, ir, sparams))
-            ssa_vals[stmt_idx] = HloInstructionProto(comp, HloTuple(), map(hlo_eval, filter(x->x!=nothing, stmt.args[2:end]))...)
+            args = Any[]
+            for arg in stmt.args[2:end]
+                ty = argextype(arg, ir, sparams)
+                representable(arg) || continue
+                push!(args, hlo_eval(arg))
+            end
+            ssa_vals[stmt_idx] = HloInstructionProto(comp, HloTuple(), args...)
             continue
         end
         if isexpr(stmt, :call) && Compiler.is_known_call(stmt, getfield, ir, sparams)
@@ -234,7 +239,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 end
             elseif isa(hlo_inst, Union{HloInfeed, HloAfterAll})
                 args = map(hlo_eval, stmt.args[3:end])
-                shape = dtype_to_shape(infer_rt(hlo_inst, map(typeof, args)...))
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(typeof, args)...); tensorflow_order=isa(hlo_inst, HloInfeed))
                 proto = HloInstructionProto(comp,
                     hlo_inst, args...,
                     shape = shape)
@@ -252,7 +257,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 # Allow treating an XRTArray as a scalar inside another XRTArray
                 # This is a no-op at the HLO level
                 ty = widenconst(ty)
-                @assert ty <: XRTArray && (hlo_inst <: XRTArray{<:Any, (), 0})
+                @assert (hlo_inst <: XRTArray{<:Any, (), 0})
                 ssa_vals[stmt_idx] = hlo_eval(stmt.args[3])
             end
         elseif hlo_inst == Base.convert
@@ -324,17 +329,23 @@ function representable(T)
     return sizeof(T) != 0
 end
 
-dtype_to_shape(T::Type{<:XRTArray}) = convert(Shape, T)
-dtype_to_shape(T::Type{<:XLA.XLAScalar}) = dtype_to_shape(XRTArray{T, (), 0})
-function dtype_to_shape(T::Type{HloToken})
+function dtype_to_shape(T::Type{<:XRTArray}; tensorflow_order=false)
+    shp = convert(Shape, T)
+    if tensorflow_order
+        shp.layout.minor_to_major = collect((length(shp.layout.minor_to_major) - 1):-1:0)
+    end
+    shp
+end
+dtype_to_shape(T::Type{<:XLA.XLAScalar}; tensorflow_order=false) = dtype_to_shape(XRTArray{T, (), 0})
+function dtype_to_shape(T::Type{HloToken}; tensorflow_order=false)
     Shape(
         element_type = xla.PrimitiveType.TOKEN
     )
 end
-function dtype_to_shape(T::DataType)
+function dtype_to_shape(T::DataType; tensorflow_order=false)
     Shape(
         element_type = xla.PrimitiveType.TUPLE,
-        tuple_shapes = collect(dtype_to_shape(fieldtype(T, i)) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
+        tuple_shapes = collect(dtype_to_shape(fieldtype(T, i); tensorflow_order=tensorflow_order) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
     )
 end
 

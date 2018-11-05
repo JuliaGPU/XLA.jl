@@ -154,9 +154,11 @@ version = "0.0.3"
 
 [[DiffRules]]
 deps = ["Random", "Test"]
-git-tree-sha1 = "c49ec69428ffea0c1d1bbdc63d1a70f5df5860ad"
+git-tree-sha1 = "9e39294993d106ec968bdef05f2af562c5618966"
+repo-rev = "kf/tpuhack"
+repo-url = "https://github.com/Keno/DiffRules.jl"
 uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
-version = "0.0.7"
+version = "0.0.7+"
 
 [[Distances]]
 deps = ["LinearAlgebra", "Printf", "Random", "Statistics", "Test"]
@@ -305,9 +307,9 @@ version = "0.1.1"
 
 [[ImageTransformations]]
 deps = ["AxisAlgorithms", "ColorTypes", "ColorVectorSpace", "Colors", "CoordinateTransformations", "FixedPointNumbers", "IdentityRanges", "ImageCore", "Interpolations", "LinearAlgebra", "OffsetArrays", "StaticArrays", "Test"]
-git-tree-sha1 = "904bcf19c10176fc0725d9fd94c79bcddb392e93"
+git-tree-sha1 = "fdc6ecdb96a03f4df62ded306eb32fae68ccb588"
 uuid = "02fcd773-0e25-5acc-982a-7f6622650795"
-version = "0.6.0"
+version = "0.7.0"
 
 [[Images]]
 deps = ["AxisArrays", "Base64", "ColorTypes", "ColorVectorSpace", "Colors", "FileIO", "FixedPointNumbers", "Graphics", "ImageAxes", "ImageCore", "ImageDistances", "ImageFiltering", "ImageMetadata", "ImageMorphology", "ImageShow", "ImageTransformations", "IndirectArrays", "LinearAlgebra", "MappedArrays", "OffsetArrays", "Random", "Reexport", "SIUnits", "SparseArrays", "StaticArrays", "Statistics", "StatsBase", "Test", "TiledIteration"]
@@ -638,7 +640,7 @@ version = "0.3.0+"
 
 [[TensorFlow]]
 deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MLDatasets", "MacroTools", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
-git-tree-sha1 = "28ed5d7b036cc5a32c0fb16affd6a1d2c825bb12"
+git-tree-sha1 = "2cd6ee8e3886aeac64f4e7f5adaa56d3d1e97d85"
 repo-rev = "sf/xrt_server"
 repo-url = "https://github.com/JuliaComputing/TensorFlow.jl"
 uuid = "1d978283-2c37-5f34-9a8e-e9c0ece82495"

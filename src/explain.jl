@@ -6,7 +6,7 @@ end
 
 function Base.showerror(io::IO, e::NotOffloadableError)
     println(io, "The specified function is not offloadable. The offending IR was:")
-    Base.IRShow.show_ir(stdout, e.ir; verbose_linetable=true)
+    Base.IRShow.show_ir(io, e.ir; verbose_linetable=true)
     if isa(e.reason, String)
         println(io, e.reason)
     elseif isa(e.reason, Function)

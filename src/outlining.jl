@@ -42,8 +42,13 @@ function outline_if_bb(ir, bb_to_outline, types, used_from_outside, merge_phi)
         Compiler.append_node!(outlined_ir, ir.types[idx], stmt′, 0)
     end
     edge_idx = findfirst(==(bb_to_outline), merge_phi.edges)
-    val_id = (merge_phi.values[edge_idx]::SSAValue).id
-    Compiler.append_node!(outlined_ir, ir.types[val_id], ReturnNode(SSAValue(val_id - first(block.stmts) + length(used_from_outside) + 1)), 0)
+    retval_val = (merge_phi.values[edge_idx]::SSAValue)
+    val_id = retval_val.id
+    retval_outside = findfirst(==(retval_val), used_from_outside)
+    retval_val = retval_outside === nothing ?
+        SSAValue(val_id - first(block.stmts) + length(used_from_outside) + 1) :
+        SSAValue(retval_outside)
+    Compiler.append_node!(outlined_ir, ir.types[val_id], ReturnNode(retval_val), 0)
     return outlined_ir
 end
 
@@ -384,20 +389,24 @@ function outline_if!(ir, sv, domtree, split_block, join)
         # TODO: Allow each branch to have multiple BBS
         used_from_outside = Vector{Any}()
         stmt_range = ir.cfg.blocks[bb].stmts
+        function process_val(val)
+            if isa(val, SSAValue)
+                # If it's in our current basic block, we don't care
+                val.id in stmt_range && return
+            elseif !isa(val, Compiler.Argument)
+                return
+            end
+            push!(used_from_outside, val)
+        end
         for stmt_idx in stmt_range
             stmt = ir.stmts[stmt_idx]
             urs = userefs(stmt)
             for op in urs
                 val = op[]
-                if isa(val, SSAValue)
-                    # If it's in our current basic block, we don't care
-                    val.id in stmt_range && continue
-                elseif !isa(val, Compiler.Argument)
-                    continue
-                end
-                push!(used_from_outside, val)
+                process_val(val)
             end
         end
+        process_val(phi_node.values[findfirst(==(bb), phi_node.edges)])
         unique!(used_from_outside)
         push!(all_used_from_outside, used_from_outside)
     end
@@ -409,6 +418,8 @@ function outline_if!(ir, sv, domtree, split_block, join)
     else_func = outline_if_bb(ir, divergence_blocks[2], else_types, all_used_from_outside[2], phi_node)
     append!(if_func.argtypes, [nothing, if_tuple_T])
     append!(else_func.argtypes, [nothing, else_tuple_T])
+    Compiler.verify_ir(if_func)
+    Compiler.verify_ir(else_func)
     inst = _HloIf(if_func, else_func)
     condition = ir.stmts[ir.cfg.blocks[split_block].stmts[end]]
     @assert isa(condition, GotoIfNot)

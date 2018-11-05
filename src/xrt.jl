@@ -52,6 +52,10 @@ function Base.close(c::XRTCompilation)
     Core.setfield!(c, :h, -1)
 end
 
+const tf = TensorFlow
+using Libdl
+const run_func = Ref{Ptr{Cvoid}}(C_NULL)
+const the_ptr = Ref{Ptr{Cvoid}}(C_NULL)
 mutable struct XRTAllocation
     sess
     device::Union{Nothing, TensorFlow.Device}
@@ -73,6 +77,7 @@ mutable struct XRTAllocation
         res
     end
     global run
+    global _run
     function _run(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
         iob = PipeBuffer();
         writeproto(iob, config)
@@ -85,10 +90,36 @@ mutable struct XRTAllocation
             _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
             return com.device === nothing ? _op() : with_device(_op, com.device)
         end
-        res = new(com.sess, com.device, run(com.sess, op, Dict(alloc => str)))
+        res = @GC.preserve inputs new(com.sess, com.device, run(com.sess, op, Dict(alloc => str)))
         finalizer(close, res)
         res
     end
+
+    global _run_async
+    function _run_async(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+        iob = PipeBuffer();
+        writeproto(iob, config)
+        str = String(take!(iob))
+        local alloc
+        op = as_default(com.sess.graph) do
+            # Make sure everything is on the same device
+            @assert all(input->input.device == com.device, inputs)
+            _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, inputs)))
+            return com.device === nothing ? _op() : with_device(_op, com.device)
+        end
+        res = @GC.preserve inputs new(com.sess, com.device, run(com.sess, op, Dict(); async=true))
+        finalizer(close, res)
+        res
+    end
+
+    global run_async
+    function run_async(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+        res = _run_async(com, inputs...; config=config)
+        T = convert(Type, XlaType(com.shape.result.element_type))
+        dims = (com.shape.result.dimensions...,)
+        XRTArray{T, dims, length(dims)}(res)
+    end
+
     function run(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
         res = _run(com, inputs...; config=config)
         T = convert(Type, XlaType(com.shape.result.element_type))
@@ -104,6 +135,7 @@ const tf = TensorFlow
 global counter = 0
 function Base.close(c::XRTAllocation)
     global counter
+#=
     counter += 1
     desc = tf.NodeDescription(c.sess.graph, "Const", "ReleaseAllocationHandle$(counter)/Const")
     desc["value"] = TensorFlow.RawTensor(c.h)
@@ -118,6 +150,7 @@ function Base.close(c::XRTAllocation)
         isa(err, TensorFlow.TFException) || rethrow(err)
         error(string("TensorFlow error: ", string(err.status)))
     end
+=#
     Core.setfield!(c, :h, -1)
 end
 

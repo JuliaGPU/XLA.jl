@@ -390,3 +390,9 @@ function Base.getindex(A::XRTVector{T}, i::XRTArray{<:Integer, (), 0}) where {T}
     convert(T, ret)
 end
 Base.getindex(A::XRTVector, i::Int64) = Base.getindex(A, XRTArray{Int64, (), 0}(i))
+
+using DiffRules
+DiffRules.select(p::XRTArray{Bool, (), 0}, x::XRTArray{T, (), 0}, y::XRTArray{T, (), 0}) where {T} =
+    GenericHloOp{:select}(T, ())(p, x, y)
+DiffRules.select(p::Bool, x::XRTArray{T, (), 0}, y::XRTArray{T, (), 0}) where {T} =
+    GenericHloOp{:select}(T, ())(XRTArray{Bool, (), 0}(p), x, y)
