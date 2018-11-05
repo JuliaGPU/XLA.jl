@@ -6,9 +6,6 @@ using Flux
 using TensorFlow
 using Zygote
 
-# For now. Media.jl has a bug
-pop!(Base.Multimedia.displays)
-
 # Connect to the TensorFlow distributed session (either xrt_server or TPU)
 sess = Session(Graph(); target="grpc://localhost:8470")
 

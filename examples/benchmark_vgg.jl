@@ -7,9 +7,6 @@
 # server to access the TPU device from outside of Google's network.  Example: `ssh -L 8471:<tpu_internal_ip>:8470 <gce_external_ip>`
 using XLA, TensorFlow
 
-# For now. Media.jl has a bug
-pop!(Base.Multimedia.displays)
-
 # Connect to the TensorFlow distributed sessions (one for CPU, one for GPU, one for TPU)
 cpu_sess = Session(Graph(); target="grpc://localhost:8470")
 gpu_sess = cpu_sess

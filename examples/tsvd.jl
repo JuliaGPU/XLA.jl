@@ -8,9 +8,6 @@ using StaticArrays
 using TSVD
 using LinearAlgebra
 
-pop!(Base.Multimedia.displays)
-
-
 StaticArrays.similar_type(A::XRTArray{T}, s::Size{Sz}) where {T, Sz} = XRTArray{T, Sz, length(Sz)}
 StaticArrays.similar_type(A::XRTArray{T}, ::Type{S}, s::Size{Sz}) where {T, S, Sz} = XRTArray{S, Sz, length(Sz)}
 A = XRTArray(randn(Float32, 10, 10))

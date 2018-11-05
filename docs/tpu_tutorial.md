@@ -92,7 +92,6 @@ Start by loading the relevant packages
 ```julia
 using XLA
 using TensorFlow
-pop!(Base.Multimedia.displays)
 ```
 
 Set up the TPU session. Replace 10.240.1.2 with your TPU IP if it is different.

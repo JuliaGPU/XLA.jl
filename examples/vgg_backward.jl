@@ -5,9 +5,6 @@ using Metalhead
 using Flux
 using TensorFlow
 
-# For now. Media.jl has a bug
-pop!(Base.Multimedia.displays)
-
 # Filter Dropout layers for now (the data-dependent condition is slightly
 # harder to compile).
 ic = ImmutableChain(filter(x->!isa(x, Flux.Dropout), VGG19().layers.layers)...)
