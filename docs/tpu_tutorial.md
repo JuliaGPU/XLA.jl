@@ -118,7 +118,7 @@ f(x) = sum(x*x)
 data = XRTArray(rand(Float32,10^4,10^4))
 f_compiled = @tpu_compile f(data)
 run(f_compiled, data)
-teraflops = @time run(f_compiled, data) / (2*(1e4)^3) / 1e12
+teraflops = (@time run(f_compiled, data)) / (2*(1e4)^3) / 1e12
 ```
 
 ## You're now ready to use TPUs
