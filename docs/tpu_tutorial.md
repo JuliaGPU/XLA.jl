@@ -94,9 +94,9 @@ using XLA
 using TensorFlow
 ```
 
-Set up the TPU session. Replace 10.240.1.2 with your TPU IP if it is different.
+Set up the TPU session. Replace 10.240.x.x with your TPU IP if it is different. The IP can be found at https://console.cloud.google.com/compute/tpus.
 ```julia
-sess = Session(Graph(); target="grpc://10.240.1.2:8470")
+sess = Session(Graph(); target="grpc://10.240.x.x:8470")
 run(sess, TensorFlow.Ops.configure_distributed_tpu())
 ```
 
