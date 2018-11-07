@@ -80,19 +80,22 @@ mutable struct XRTAllocation
     end
     global run
     global _run
-    function _run(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
+    function make_run_op(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
         iob = PipeBuffer();
         writeproto(iob, config)
         str = String(take!(iob))
-        local alloc
         op = as_default(com.sess.graph) do
-            alloc = placeholder(String)
+            handles = map(x->gethandle!(com.sess, x), inputs)
             # Make sure everything is on the same device
-            @assert all(input->input.device == com.device, inputs)
-            _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->gethandle!(sess, x).h, inputs)))
+            @assert all(input->input.device == com.device, handles)
+            _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, handles)))
             return com.device === nothing ? _op() : with_device(_op, com.device)
         end
-        h = run(com.sess, op, Dict(alloc => str))
+    end
+
+    function _run(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
+        op = make_run_op(com, inputs...; config=config)
+        h = run(com.sess, op, Dict())
         #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
         res = @GC.preserve inputs new(com.sess, com.device, h)
         finalizer(close, res)
@@ -101,19 +104,9 @@ mutable struct XRTAllocation
 
     global _run_async
     function _run_async(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
-        iob = PipeBuffer();
-        writeproto(iob, config)
-        str = String(take!(iob))
-        local alloc
-        op = as_default(com.sess.graph) do
-            handles = map(x->gethandle!(com.sess, x), inputs)
-            # Make sure everything is on the same device
-            @assert all(input->input.device == com.device, handles)
-            _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, handles)))
-            return com.device === nothing ? _op() : with_device(_op, com.device)
-        end
+        op = make_run_op(com, inputs...; config=config)
         h = run(com.sess, op, Dict(); async=true)
-        ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
+        #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
         res = @GC.preserve inputs new(com.sess, com.device, h)
         finalizer(close, res)
         res
@@ -209,7 +202,7 @@ struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
     end
 end
 
-function read_literal(allocation::XRTAllocation)
+function read_literal(rs::XRTAllocation)
     sess, dev, h = rs.sess, rs.device, rs.h
     op() = as_default(sess.graph) do
         run(sess, TensorFlow.Ops.xrt_read_literal(h))::String
