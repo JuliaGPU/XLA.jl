@@ -1,5 +1,4 @@
 # syntax: proto3
-using Compat
 using ProtoBuf
 import ProtoBuf.meta
 
@@ -35,6 +34,7 @@ mutable struct HloInstructionProto <: ProtoType
     channel_id::Int64
     infeed_config::Array{UInt8,1}
     custom_call_target::AbstractString
+    custom_call_opaque::AbstractString
     outfeed_shape::Shape
     dot_dimension_numbers::DotDimensionNumbers
     fft_type::Int32
@@ -54,11 +54,15 @@ mutable struct HloInstructionProto <: ProtoType
     cross_replica_sum_barrier::AbstractString
     is_host_transfer::Bool
     scatter_dimension_numbers::ScatterDimensionNumbers
-    precision_config::PrecisionConfigProto
+    precision_config::PrecisionConfig
     source_target_pairs::Base.Vector{SourceTarget}
+    domain_entry_sharding::OpSharding
+    domain_exit_sharding::OpSharding
+    constrain_layout::Bool
+    operand_shapes_with_layout::Base.Vector{Shape}
     HloInstructionProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct HloInstructionProto
-const __fnum_HloInstructionProto = Int[1,2,3,7,8,9,11,13,14,15,16,50,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,41,42,35,36,37,38,40,43,49,45,46,47,48,51,52]
+const __fnum_HloInstructionProto = Int[1,2,3,7,8,9,11,13,14,15,16,50,17,18,19,20,21,22,23,24,25,26,27,28,53,29,30,31,32,33,34,41,42,35,36,37,38,40,43,49,45,46,47,48,51,52,54,55,56,57]
 const __pack_HloInstructionProto = Symbol[:dimensions,:dynamic_slice_sizes,:fft_length,:gather_slice_sizes,:operand_ids,:control_predecessor_ids,:called_computation_ids]
 meta(t::Type{HloInstructionProto}) = meta(t, ProtoBuf.DEF_REQ, __fnum_HloInstructionProto, ProtoBuf.DEF_VAL, true, __pack_HloInstructionProto, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
@@ -73,28 +77,51 @@ end #mutable struct HloComputationProto
 const __fnum_HloComputationProto = Int[1,2,4,5,6]
 meta(t::Type{HloComputationProto}) = meta(t, ProtoBuf.DEF_REQ, __fnum_HloComputationProto, ProtoBuf.DEF_VAL, true, ProtoBuf.DEF_PACK, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
+mutable struct HloScheduleProto_InstructionSequence <: ProtoType
+    instruction_ids::Base.Vector{Int64}
+    HloScheduleProto_InstructionSequence(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct HloScheduleProto_InstructionSequence
+const __pack_HloScheduleProto_InstructionSequence = Symbol[:instruction_ids]
+meta(t::Type{HloScheduleProto_InstructionSequence}) = meta(t, ProtoBuf.DEF_REQ, ProtoBuf.DEF_FNUM, ProtoBuf.DEF_VAL, true, __pack_HloScheduleProto_InstructionSequence, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
+
+mutable struct HloScheduleProto_SequencesEntry <: ProtoType
+    key::Int64
+    value::HloScheduleProto_InstructionSequence
+    HloScheduleProto_SequencesEntry(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct HloScheduleProto_SequencesEntry (mapentry)
+
+mutable struct HloScheduleProto <: ProtoType
+    sequences::Base.Dict{Int64,HloScheduleProto_InstructionSequence} # map entry
+    HloScheduleProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct HloScheduleProto
+
+mutable struct HloInputOutputAliasProto_AliasEntryProto <: ProtoType
+    output_shape_index::Base.Vector{Int64}
+    parameter_number::Int64
+    parameter_shape_index::Base.Vector{Int64}
+    HloInputOutputAliasProto_AliasEntryProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct HloInputOutputAliasProto_AliasEntryProto
+const __pack_HloInputOutputAliasProto_AliasEntryProto = Symbol[:output_shape_index,:parameter_shape_index]
+meta(t::Type{HloInputOutputAliasProto_AliasEntryProto}) = meta(t, ProtoBuf.DEF_REQ, ProtoBuf.DEF_FNUM, ProtoBuf.DEF_VAL, true, __pack_HloInputOutputAliasProto_AliasEntryProto, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
+
+mutable struct HloInputOutputAliasProto <: ProtoType
+    entries::Base.Vector{HloInputOutputAliasProto_AliasEntryProto}
+    HloInputOutputAliasProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct HloInputOutputAliasProto
+
 mutable struct HloModuleProto <: ProtoType
     name::AbstractString
     entry_computation_name::AbstractString
     entry_computation_id::Int64
     computations::Base.Vector{HloComputationProto}
-    program_shape::ProgramShape
+    host_program_shape::ProgramShape
     id::Int64
+    schedule::HloScheduleProto
+    input_output_alias::HloInputOutputAliasProto
     HloModuleProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct HloModuleProto
-const __fnum_HloModuleProto = Int[1,2,6,3,4,5]
+const __fnum_HloModuleProto = Int[1,2,6,3,4,5,7,8]
 meta(t::Type{HloModuleProto}) = meta(t, ProtoBuf.DEF_REQ, __fnum_HloModuleProto, ProtoBuf.DEF_VAL, true, ProtoBuf.DEF_PACK, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
-
-mutable struct HloOrderingProto_SequentialComputation <: ProtoType
-    computation_name::AbstractString
-    instruction_names::Base.Vector{AbstractString}
-    HloOrderingProto_SequentialComputation(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
-end #mutable struct HloOrderingProto_SequentialComputation
-
-mutable struct HloOrderingProto <: ProtoType
-    sequential_computations::Base.Vector{HloOrderingProto_SequentialComputation}
-    HloOrderingProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
-end #mutable struct HloOrderingProto
 
 mutable struct LogicalBufferProto_Location <: ProtoType
     computation_name::AbstractString
@@ -161,6 +188,12 @@ mutable struct HeapSimulatorTrace <: ProtoType
     HeapSimulatorTrace(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct HeapSimulatorTrace
 
+mutable struct HloModuleGroupProto <: ProtoType
+    name::AbstractString
+    hlo_modules::Base.Vector{HloModuleProto}
+    HloModuleGroupProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct HloModuleGroupProto
+
 mutable struct BufferAssignmentProto_BufferAlias <: ProtoType
     source_buffer_id::Int64
     location::LogicalBufferProto_Location
@@ -177,10 +210,11 @@ end #mutable struct BufferAssignmentProto
 
 mutable struct HloProto <: ProtoType
     hlo_module::HloModuleProto
-    hlo_ordering::HloOrderingProto
     buffer_assignment::BufferAssignmentProto
     HloProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct HloProto
+const __fnum_HloProto = Int[1,3]
+meta(t::Type{HloProto}) = meta(t, ProtoBuf.DEF_REQ, __fnum_HloProto, ProtoBuf.DEF_VAL, true, ProtoBuf.DEF_PACK, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
 mutable struct HloSnapshot <: ProtoType
     hlo::HloProto
@@ -190,4 +224,5 @@ mutable struct HloSnapshot <: ProtoType
     HloSnapshot(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct HloSnapshot
 
-export HloInstructionProto_SliceDimensions, HloInstructionProto, HloComputationProto, HloModuleProto, HloOrderingProto_SequentialComputation, HloOrderingProto, LogicalBufferProto_Location, LogicalBufferProto, BufferAllocationProto_Assigned, BufferAllocationProto, HeapSimulatorTrace_Event_Kind, HeapSimulatorTrace_Event, HeapSimulatorTrace, BufferAssignmentProto_BufferAlias, BufferAssignmentProto, HloProto, HloSnapshot
+export HloInstructionProto_SliceDimensions, HloInstructionProto, HloComputationProto, HloScheduleProto_InstructionSequence, HloScheduleProto_SequencesEntry, HloScheduleProto, HloInputOutputAliasProto_AliasEntryProto, HloInputOutputAliasProto, HloModuleProto, LogicalBufferProto_Location, LogicalBufferProto, BufferAllocationProto_Assigned, BufferAllocationProto, HeapSimulatorTrace_Event_Kind, HeapSimulatorTrace_Event, HeapSimulatorTrace, HloModuleGroupProto, BufferAssignmentProto_BufferAlias, BufferAssignmentProto, HloProto, HloSnapshot
+# mapentries: "HloScheduleProto_SequencesEntry" => ("Int64", "HloScheduleProto_InstructionSequence")

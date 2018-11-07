@@ -1,9 +1,25 @@
 # syntax: proto3
-using Compat
 using ProtoBuf
 import ProtoBuf.meta
 import ._ProtoBuf_Top_.tensorflow
 import ._ProtoBuf_Top_.xla
+
+mutable struct DeviceAssignment_ComputationDevice_DeviceMeshCoordinates <: ProtoType
+    value::Base.Vector{Int32}
+    DeviceAssignment_ComputationDevice_DeviceMeshCoordinates(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct DeviceAssignment_ComputationDevice_DeviceMeshCoordinates
+const __pack_DeviceAssignment_ComputationDevice_DeviceMeshCoordinates = Symbol[:value]
+meta(t::Type{DeviceAssignment_ComputationDevice_DeviceMeshCoordinates}) = meta(t, ProtoBuf.DEF_REQ, ProtoBuf.DEF_FNUM, ProtoBuf.DEF_VAL, true, __pack_DeviceAssignment_ComputationDevice_DeviceMeshCoordinates, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
+
+mutable struct DeviceAssignment_ComputationDevice <: ProtoType
+    replica_devices::Base.Vector{DeviceAssignment_ComputationDevice_DeviceMeshCoordinates}
+    DeviceAssignment_ComputationDevice(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct DeviceAssignment_ComputationDevice
+
+mutable struct DeviceAssignment <: ProtoType
+    computation_devices::Base.Vector{DeviceAssignment_ComputationDevice}
+    DeviceAssignment(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct DeviceAssignment
 
 mutable struct XLAComputationConfig <: ProtoType
     num_replicas::Int32
@@ -11,6 +27,7 @@ mutable struct XLAComputationConfig <: ProtoType
     host_compute_metadata::tensorflow.tf2xla.HostComputeMetadata
     program_shape::xla.ProgramShape
     per_core_program_shape::Base.Vector{xla.ProgramShape}
+    device_assignment::DeviceAssignment
     XLAComputationConfig(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct XLAComputationConfig
 
@@ -43,4 +60,4 @@ mutable struct XRTExecutionConfig <: ProtoType
     XRTExecutionConfig(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct XRTExecutionConfig
 
-export XLAComputationConfig, XLAComputation, XLAAllocation, XLATupleNode, XRTExecutionConfig
+export DeviceAssignment_ComputationDevice_DeviceMeshCoordinates, DeviceAssignment_ComputationDevice, DeviceAssignment, XLAComputationConfig, XLAComputation, XLAAllocation, XLATupleNode, XRTExecutionConfig

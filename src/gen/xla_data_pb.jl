@@ -1,5 +1,4 @@
 # syntax: proto3
-using Compat
 using ProtoBuf
 import ProtoBuf.meta
 
@@ -25,17 +24,6 @@ struct __enum_PrimitiveType <: ProtoEnum
     __enum_PrimitiveType() = new(0,1,2,3,4,5,6,7,8,9,10,11,16,12,15,13,14,17)
 end #struct __enum_PrimitiveType
 const PrimitiveType = __enum_PrimitiveType()
-
-struct __enum_PaddingValue <: ProtoEnum
-    INVALID_PAD::Int32
-    ZERO_PAD::Int32
-    ONE_PAD::Int32
-    LOWEST_PAD::Int32
-    HIGHEST_PAD::Int32
-    UNKNOWN_PAD::Int32
-    __enum_PaddingValue() = new(0,1,2,3,4,5)
-end #struct __enum_PaddingValue
-const PaddingValue = __enum_PaddingValue()
 
 struct __enum_Format <: ProtoEnum
     INVALID_FORMAT::Int32
@@ -77,13 +65,11 @@ end #mutable struct PaddingConfig
 mutable struct Layout <: ProtoType
     format::Int32
     minor_to_major::Base.Vector{Int64}
-    padded_dimensions::Base.Vector{Int64}
-    padding_value::Int32
     max_sparse_elements::Int64
     Layout(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct Layout
-const __fnum_Layout = Int[4,1,2,3,5]
-const __pack_Layout = Symbol[:minor_to_major,:padded_dimensions]
+const __fnum_Layout = Int[4,1,5]
+const __pack_Layout = Symbol[:minor_to_major]
 meta(t::Type{Layout}) = meta(t, ProtoBuf.DEF_REQ, __fnum_Layout, ProtoBuf.DEF_VAL, true, __pack_Layout, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
 mutable struct Shape <: ProtoType
@@ -176,6 +162,7 @@ end #mutable struct DeviceAssignmentProto
 mutable struct LiteralProto <: ProtoType
     shape::Shape
     preds::Base.Vector{Bool}
+    s8s::Array{UInt8,1}
     u8s::Array{UInt8,1}
     s32s::Base.Vector{Int32}
     s64s::Base.Vector{Int64}
@@ -190,7 +177,7 @@ mutable struct LiteralProto <: ProtoType
     sparse_indices::Base.Vector{Int64}
     LiteralProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct LiteralProto
-const __fnum_LiteralProto = Int[1,2,3,4,5,6,7,8,9,12,10,11,13,14]
+const __fnum_LiteralProto = Int[1,2,15,3,4,5,6,7,8,9,12,10,11,13,14]
 const __pack_LiteralProto = Symbol[:preds,:s32s,:s64s,:u32s,:u64s,:f32s,:f64s,:c64s,:sparse_indices]
 meta(t::Type{LiteralProto}) = meta(t, ProtoBuf.DEF_REQ, __fnum_LiteralProto, ProtoBuf.DEF_VAL, true, __pack_LiteralProto, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
@@ -289,19 +276,19 @@ mutable struct SourceTarget <: ProtoType
     SourceTarget(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct SourceTarget
 
-struct __enum_PrecisionConfigProto_Precision <: ProtoEnum
+struct __enum_PrecisionConfig_Precision <: ProtoEnum
     DEFAULT::Int32
     HIGH::Int32
     HIGHEST::Int32
-    __enum_PrecisionConfigProto_Precision() = new(0,1,2)
-end #struct __enum_PrecisionConfigProto_Precision
-const PrecisionConfigProto_Precision = __enum_PrecisionConfigProto_Precision()
+    __enum_PrecisionConfig_Precision() = new(0,1,2)
+end #struct __enum_PrecisionConfig_Precision
+const PrecisionConfig_Precision = __enum_PrecisionConfig_Precision()
 
-mutable struct PrecisionConfigProto <: ProtoType
+mutable struct PrecisionConfig <: ProtoType
     operand_precision::Base.Vector{Int32}
-    PrecisionConfigProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
-end #mutable struct PrecisionConfigProto
-const __pack_PrecisionConfigProto = Symbol[:operand_precision]
-meta(t::Type{PrecisionConfigProto}) = meta(t, ProtoBuf.DEF_REQ, ProtoBuf.DEF_FNUM, ProtoBuf.DEF_VAL, true, __pack_PrecisionConfigProto, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
+    PrecisionConfig(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct PrecisionConfig
+const __pack_PrecisionConfig = Symbol[:operand_precision]
+meta(t::Type{PrecisionConfig}) = meta(t, ProtoBuf.DEF_REQ, ProtoBuf.DEF_FNUM, ProtoBuf.DEF_VAL, true, __pack_PrecisionConfig, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
-export PrimitiveType, PaddingValue, Format, FftType, RandomDistribution, PaddingConfig_PaddingConfigDimension, PaddingConfig, Layout, Shape, ProgramShape, ComputationStats, OpMetadata, ExecutionProfile, ExecutionHandle, GlobalDataHandle, DeviceHandle, ChannelHandle_ChannelType, ChannelHandle, DeviceAssignmentProto_ComputationDevice, DeviceAssignmentProto, LiteralProto, WindowDimension, Window, GatherDimensionNumbers, ScatterDimensionNumbers, ConvolutionDimensionNumbers, DotDimensionNumbers, OpSharding_Type, OpSharding, ReplicaGroup, SourceTarget, PrecisionConfigProto_Precision, PrecisionConfigProto
+export PrimitiveType, Format, FftType, RandomDistribution, PaddingConfig_PaddingConfigDimension, PaddingConfig, Layout, Shape, ProgramShape, ComputationStats, OpMetadata, ExecutionProfile, ExecutionHandle, GlobalDataHandle, DeviceHandle, ChannelHandle_ChannelType, ChannelHandle, DeviceAssignmentProto_ComputationDevice, DeviceAssignmentProto, LiteralProto, WindowDimension, Window, GatherDimensionNumbers, ScatterDimensionNumbers, ConvolutionDimensionNumbers, DotDimensionNumbers, OpSharding_Type, OpSharding, ReplicaGroup, SourceTarget, PrecisionConfig_Precision, PrecisionConfig
