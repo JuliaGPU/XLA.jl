@@ -45,7 +45,7 @@ function Base.run(xrt::XRTCompilation, args::AnyXLA...)
     run(xrt, map(a->gethandle!(xrt.sess, a), args)...)
 end
 
-function _execute(op::HloOp, args::AnyXLA...)
+function _execute(op::HloOp, args...)
     sess = nothing
     for x in args
         if x.storage.remotestorage !== nothing
@@ -62,7 +62,7 @@ function _execute(op::HloOp, args::AnyXLA...)
     ret
 end
 
-function execute(op::HloOp, args::AnyXLA...)
+function execute(op::HloOp, args...)
     # This acts as a temporary inference barrier. We don't benefit from looking
     # through this (since we use infer_rt to figure out the return type) and when
     # aggressive optimizations are on, compiling the execute code can be *very*
@@ -83,6 +83,7 @@ end
 @noinline (op::HloDynamicUpdateSlice)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloConcatenate)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloInfeed)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloOutfeed)(args...) = execute(op, args...)
 @noinline (op::HloAfterAll)(args::AnyXLA...) = execute(op, args...)
 
 # This function is invoked via invokelatest which acts as an inference barrier.

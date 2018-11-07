@@ -164,3 +164,4 @@ end
 
 infer_rt(op::HloInfeed, arg::Type) = Tuple{op.infeed_shape, HloToken}
 infer_rt(op::HloAfterAll, args::Type...) = HloToken
+infer_rt(op::HloOutfeed, args::Type...) = HloToken

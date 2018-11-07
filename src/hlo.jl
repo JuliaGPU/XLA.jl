@@ -233,7 +233,17 @@ fill_fields!(proto::HloInstructionProto, r::HloConcatenate) = proto.dimensions =
 struct HloInfeed{T} <: HloOp{Symbol("infeed")}
     infeed_shape::Type{T}
 end
-fill_fields!(proto::HloInstructionProto, r::HloInfeed) = nothing
+function fill_fields!(proto::HloInstructionProto, r::HloInfeed)
+    # TODO: What does this field do? TF doesn't seem to use it
+    proto.infeed_config = UInt8[]
+end
+
+struct HloOutfeed <: HloOp{Symbol("outfeed")}
+end
+function fill_fields!(proto::HloInstructionProto, r::HloOutfeed)
+    # TODO: What does this field do? TF doesn't seem to use it
+    proto.outfeed_config = UInt8[]
+end
 
 struct HloAfterAll <: HloOp{Symbol("after-all")}
 end

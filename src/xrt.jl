@@ -70,9 +70,11 @@ mutable struct XRTAllocation
             alloc = placeholder(String)
             TensorFlow.Ops.xrt_allocate(alloc)
         end
+        h = run(sess, op, Dict(alloc=>String(take!(buf))))
+        #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
         res = new(sess,
             current_device(sess),
-            run(sess, op, Dict(alloc=>String(take!(buf)))))
+            h)
         finalizer(close, res)
         res
     end
@@ -90,7 +92,9 @@ mutable struct XRTAllocation
             _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
             return com.device === nothing ? _op() : with_device(_op, com.device)
         end
-        res = @GC.preserve inputs new(com.sess, com.device, run(com.sess, op, Dict(alloc => str)))
+        h = run(com.sess, op, Dict(alloc => str))
+        #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
+        res = @GC.preserve inputs new(com.sess, com.device, h)
         finalizer(close, res)
         res
     end
@@ -107,7 +111,9 @@ mutable struct XRTAllocation
             _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, inputs)))
             return com.device === nothing ? _op() : with_device(_op, com.device)
         end
-        res = @GC.preserve inputs new(com.sess, com.device, run(com.sess, op, Dict(); async=true))
+        h = run(com.sess, op, Dict(); async=true)
+        ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
+        res = @GC.preserve inputs new(com.sess, com.device, h)
         finalizer(close, res)
         res
     end
@@ -134,8 +140,8 @@ end
 const tf = TensorFlow
 global counter = 0
 function Base.close(c::XRTAllocation)
+    #ccall(:jl_, Cvoid, (Any,), "Start Releasing allocation $(c.h)")
     global counter
-#=
     counter += 1
     desc = tf.NodeDescription(c.sess.graph, "Const", "ReleaseAllocationHandle$(counter)/Const")
     desc["value"] = TensorFlow.RawTensor(c.h)
@@ -144,13 +150,14 @@ function Base.close(c::XRTAllocation)
     desc2 = tf.NodeDescription(c.sess.graph, "XRTReleaseAllocationHandle", "ReleaseAllocationHandle$(counter)")
     tf.add_input(desc2, cc)
     c.device !== nothing && tf.set_device(desc2, c.device)
+    #ccall(:jl_, Cvoid, (Any,), "Releasing allocation $(c.h)")
     try
         run(c.sess, tf.Tensor(tf.Operation(desc2)))
     catch err
         isa(err, TensorFlow.TFException) || rethrow(err)
         error(string("TensorFlow error: ", string(err.status)))
     end
-=#
+    #ccall(:jl_, Cvoid, (Any,), "Done releasing allocation $(c.h)")
     Core.setfield!(c, :h, -1)
 end
 

@@ -243,6 +243,13 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 proto = HloInstructionProto(comp,
                     hlo_inst, args...,
                     shape = shape)
+            elseif isa(hlo_inst, HloOutfeed)
+                args = map(hlo_eval, stmt.args[3:end])
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(typeof, args)...))
+                proto = HloInstructionProto(comp,
+                    hlo_inst, args...,
+                    shape = shape)
+                proto.outfeed_shape = dtype_to_shape(widenconst(argextype(stmt.args[3], ir, sparams)); tensorflow_order=true)
             else
                 args = map(hlo_eval, stmt.args[3:end])
                 shape = Shape(shape_infer(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...)...)
