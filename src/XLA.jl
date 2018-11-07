@@ -10,6 +10,7 @@ module XLA
     include(joinpath(dirname(@__FILE__), "gen","xrt.jl"))
     using .xrt
     using .xla
+    using .tensorflow.tpu
 
     include("literal.jl")
     include("xrt.jl")
@@ -24,6 +25,7 @@ module XLA
     include("compiler_interface.jl")
     include("utils.jl")
     include("grad.jl")
+    include("topology.jl")
 
     function regen_proto()
         tf_path = "/home/keno/tensorflow/tensorflow/"
