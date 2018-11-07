@@ -104,7 +104,7 @@ end
         if i - 1 == dim
             return sum(j->size(args[j])[i], 1:length(args))
         else
-            sz = args[1]
+            sz = size(args[1])[i]
             all(j->sz == size(args[j])[i], 1:length(args)) || error("Non-concatenated dimensions must match")
             return sz
         end
@@ -150,12 +150,19 @@ function shape_infer(op::HloSelectAndScatter{T, S}, ::Type{T}, ::Type{S}, args::
     (eltype(args[1]), size(args[1]))
 end
 
+function shape_infer(op::HloScatter, T::Type, args...)
+    @Base.show (op, T, args)
+    (eltype(args[1]), size(args[1]))
+end
+
 function shape_infer(op::HloRev, A::Type{<:XRTArray})
     (eltype(A), size(A))
 end
 
 shape_infer(op::HloInfeed) = (op.infeed_shape.parameters[1],
                               op.infeed_shape.parameters[2])
+
+shape_infer(op::HloIota) = (op.result_type, op.result_shape)
 
 function infer_rt(op::HloOp, args::Type...)
     T, shape = shape_infer(op, args...)

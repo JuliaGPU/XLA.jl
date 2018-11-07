@@ -396,3 +396,32 @@ DiffRules.select(p::XRTArray{Bool, (), 0}, x::XRTArray{T, (), 0}, y::XRTArray{T,
     GenericHloOp{:select}(T, ())(p, x, y)
 DiffRules.select(p::Bool, x::XRTArray{T, (), 0}, y::XRTArray{T, (), 0}) where {T} =
     GenericHloOp{:select}(T, ())(XRTArray{Bool, (), 0}(p), x, y)
+
+function XRTArray(a::UnitRange{T}) where {T}
+    HloIota(T, (length(a),), 0)() .+ first(a)
+end
+
+function Base.hcat(a::XRTArray{T}...) where {T}
+    b = ntuple(length(a)) do i
+        ai = a[i]
+        if ndims(ai) < 2
+            HloBroadcast(ntuple(i->i-1, ndims(ai)), (length(ai), 1))(ai)
+        else
+            ai
+        end
+    end
+    HloConcatenate(1)(b...)
+end
+function change_eltype(T::Type, x::XRTArray)
+    GenericHloOp{:convert}(T, size(x))(x)
+end
+change_eltype(::Type{T}, x::XRTArray{T}) where {T} = x
+function Base.hcat(a::XRTArray...)
+    let eT = Base.promote_eltype(a...)
+        hcat(map(a->change_eltype(eT, a), a)...)
+    end
+end
+
+function Base.vcat(a::XRTArray...)
+    HloConcatenate(0)(a...)
+end

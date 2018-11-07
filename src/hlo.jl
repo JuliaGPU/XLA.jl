@@ -249,6 +249,38 @@ struct HloAfterAll <: HloOp{Symbol("after-all")}
 end
 fill_fields!(proto::HloInstructionProto, r::HloAfterAll) = nothing
 
+struct ScatterDimNums{N1, N2, N3}
+    update_window_dims::NTuple{N1, Int64}
+    inserted_window_dims::NTuple{N2, Int64}
+    scatter_dims_to_operand_dims::NTuple{N3, Int64}
+    index_vector_dim::Int64
+end
+
+function Base.convert(::Type{ScatterDimensionNumbers}, sds::ScatterDimNums)
+    ScatterDimensionNumbers(
+        update_window_dims = collect(sds.update_window_dims),
+        inserted_window_dims = collect(sds.inserted_window_dims),
+        scatter_dims_to_operand_dims = collect(sds.scatter_dims_to_operand_dims),
+        index_vector_dim = sds.index_vector_dim
+    )
+end
+
+struct HloScatter{fT} <: HloOp{Symbol("scatter")}
+    dims::ScatterDimNums
+end
+function fill_fields!(proto::HloInstructionProto, r::HloScatter)
+    proto.scatter_dimension_numbers = convert(ScatterDimensionNumbers, r.dims)
+end
+
+struct HloIota <: HloOp{Symbol("iota")}
+    result_type::Type
+    result_shape::NTuple{N, Int64} where N
+    iota_dimension::Int64
+end
+function fill_fields!(proto::HloInstructionProto, r::HloIota)
+    proto.dimensions = Int[r.iota_dimension]
+end
+
 function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_id(), name=nothing)
     proto = HloInstructionProto(
         opcode=opcode,
@@ -267,7 +299,7 @@ function shape_from_operands(op::HloOp, operands...)
             element_type = xla.PrimitiveType.TUPLE,
             tuple_shapes = collect(op.shape for op in operands)
         )
-    elseif isa(op, Union{HloMap, HloReduce, HloReduceWindow})
+    elseif isa(op, Union{HloMap, HloReduce, HloReduceWindow, HloScatter})
         T, shape = shape_infer(op,
             typeof(op).parameters[1],
             map(operands) do op

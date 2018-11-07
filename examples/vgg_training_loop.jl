@@ -42,11 +42,32 @@ function update_params(model, updates, η)
         typeof(model)(new_fields...)
 end
 
+function make_one_hot(data)
+    operand = zero(XRTArray{Float32, (1000, 20), 2})
+    updates = XLA.HloBroadcast((), (1, 20))(XRTArray(1f0))
+    update_computation = (x,y)->y
+    scatter_indices = hcat(XRTArray(0:19), data)
+    sdims = XLA.ScatterDimNums(
+        #= update_window_dims =# (0,),
+        #= inserted_window_dims =# (0,),
+        #= scatter_dims_to_operand_dims =# (1, 0),
+        #= index_vector_dim =# 1
+    )
+    XLA.HloScatter{typeof(update_computation)}(sdims)(
+            update_computation,
+            operand,
+            scatter_indices,
+            updates
+        )
+end
+
 #update_params(xrtic, updates, η) = xrtic # TODO: Here, return the model with updates applied
 function epoch_loop(::Val{batch_size}, xrtic, nbatches, η) where {batch_size}
     while nbatches > XRTArray(0)
-        (x, y), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224, 224, 3, batch_size), 4},
-                                        XRTArray{Float32, (1000, batch_size), 2}})(XLA.HloAfterAll()())
+        # N.B: Ideally we'd have the labels be UInt16, but that doesn't work yet on TPUs
+        (x, labels), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224, 224, 3, batch_size), 4},
+                                        XRTArray{UInt32, (batch_size,), 1}})(XLA.HloAfterAll()())
+        y = make_one_hot(labels)
         loss, updates = my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
         xrtic = update_params(xrtic, updates, η)
         XLA.HloOutfeed()((loss,), XLA.HloAfterAll()())
@@ -59,7 +80,7 @@ end
 
 compld = @tpu_compile epoch_loop(Val(20), xrtic, XRTArray(1), XRTArray(0.1f0))
 
-ic_alloc = XRTRemoteStorage(sess, xrtic)
+ic_alloc = XRTRemoteStruct(sess, xrtic)
 
 nbatches = 25
 GC.gc()
@@ -111,7 +132,7 @@ t
 
 for i = 1:nbatches
     @info "Feeding batch $i"
-    data = (rand(Float32, 224, 224, 3, 20), rand(Float32, 1000, 20))
+    data = (rand(Float32, 224, 224, 3, 20), rand(UInt32(0):UInt32(999), 20))
     if i == 1
         infeed(data)
     else

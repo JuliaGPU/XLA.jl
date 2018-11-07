@@ -151,6 +151,23 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 pushfirst!(computations, comp′)
                 _compile_to_xla!(computations, comp′, ir′, sv′)
                 proto.called_computation_ids = [comp′.id]
+            elseif isa(hlo_inst, HloScatter)
+                args = map(hlo_eval, stmt.args[4:end])
+                proto = HloInstructionProto(comp, hlo_inst, args...)
+                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[4], ir, sparams)), (), 0} for i = 1:2)...}
+                argvals = process_function_argument(nothing, sig, 1, ir, stmt, sparams)
+                ir′, sv′ = code_typed_xla(sig; argvals=argvals)
+                if sizeof(sig.parameters[1]) != 0
+                    ir′.argtypes[1] = Const(argvals[1])
+                end
+                comp′ = HloComputationProto(
+                    name = "comp$(length(computations))",
+                    instructions = HloInstructionProto[ ],
+                    id = length(computations)
+                )
+                pushfirst!(computations, comp′)
+                _compile_to_xla!(computations, comp′, ir′, sv′)
+                proto.called_computation_ids = [comp′.id]
             elseif isa(hlo_inst, HloSelectAndScatter)
                 args = map(hlo_eval, stmt.args[5:end])
                 proto = HloInstructionProto(comp, hlo_inst, args...)
@@ -317,7 +334,7 @@ function compile_to_xla(ir, sv)
         entry_computation_name = "comp",
         entry_computation_id = 0,
         id = 0,
-        program_shape = pshape,
+        host_program_shape = pshape,
     )
     hlo = HloProto(
         hlo_module = hlo_module

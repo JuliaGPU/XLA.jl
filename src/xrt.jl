@@ -22,7 +22,7 @@ mutable struct XRTCompilation
         end
         res = new(sess,
             current_device(sess),
-            comp.hlo_snapshot.hlo.hlo_module.program_shape, rt,
+            comp.hlo_snapshot.hlo.hlo_module.host_program_shape, rt,
             run(sess, op, Dict(alloc => String(take!(buf))))[1])
         finalizer(close, res)
         res

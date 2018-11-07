@@ -77,6 +77,7 @@ function run_xla_embedding_passes!(ir, sv)
     for i = 1:3
         domtree = Compiler.construct_domtree(ir.cfg);
         ir = Compiler.domsort_ssa!(ir, domtree)
+        Compiler.verify_ir(ir);
         ir = Compiler.cfg_simplify!(ir)
         ir = Compiler.compact!(ir, true)
     end

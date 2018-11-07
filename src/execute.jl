@@ -27,7 +27,7 @@ function build_computation(op::HloOp, args::AnyXLA...)
         entry_computation_name = "op",
         entry_computation_id = 0,
         id = 0,
-        program_shape = pshape,
+        host_program_shape = pshape,
     )
     hlo = HloProto(
         hlo_module = hlo_module
@@ -39,10 +39,6 @@ function build_computation(op::HloOp, args::AnyXLA...)
         config=config,
         hlo_snapshot = hlo_snap
     )
-end
-
-function Base.run(xrt::XRTCompilation, args::AnyXLA...)
-    run(xrt, map(a->gethandle!(xrt.sess, a), args)...)
 end
 
 function _execute(op::HloOp, args...)
@@ -85,6 +81,7 @@ end
 @noinline (op::HloInfeed)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloOutfeed)(args...) = execute(op, args...)
 @noinline (op::HloAfterAll)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloIota)(args::AnyXLA...) = execute(op, args...)
 
 # This function is invoked via invokelatest which acts as an inference barrier.
 # Thus statically, we get the type given by `infer_rt`, while dynamically we get
@@ -104,6 +101,10 @@ end
 
 @noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::XRTArray, source::XRTArray, init::XRTArray) where {T,S}
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
+end
+
+@noinline function (m::HloScatter{T})(update::T, args...) where {T}
+    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, map(typeof, args)...)
 end
 
 @noinline function (m::HloMap{fT})(f::fT, args::XRTArray...) where {fT}

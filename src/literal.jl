@@ -51,10 +51,14 @@ function assign_data!(lp::LiteralProto, a::Vector{<:XLAScalar})
         lp.preds = vec(a)
     elseif eltype(a) == Int8
         lp.u8s = vec(a)
+    elseif eltype(a) == Int16
+        lp.u16s = collect(reinterpret(UInt8, vec(a)))
     elseif eltype(a) == Int32
         lp.s32s = vec(a)
     elseif eltype(a) == Int64
         lp.s64s = vec(a)
+    elseif eltype(a) == UInt16
+        lp.u16s = collect(reinterpret(UInt8, vec(a)))
     elseif eltype(a) == UInt32
         lp.u32s = vec(a)
     elseif eltype(a) == UInt64
@@ -106,6 +110,10 @@ function to_data(lp::LiteralProto)
         return lp.preds
     elseif elt == xla.PrimitiveType.U8
         return lp.u8s
+    elseif elt == xla.PrimitiveType.U16
+        return collect(reinterpret(UInt16, lp.u16s))
+    elseif elt == xla.PrimitiveType.S16
+        return collect(reinterpret(UInt16, lp.s16s))
     elseif elt == xla.PrimitiveType.S32
         return lp.s32s
     elseif elt == xla.PrimitiveType.S64

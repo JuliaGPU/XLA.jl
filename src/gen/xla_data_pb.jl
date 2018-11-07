@@ -174,10 +174,12 @@ mutable struct LiteralProto <: ProtoType
     tuple_literals::Base.Vector{LiteralProto}
     f16s::Array{UInt8,1}
     bf16s::Array{UInt8,1}
+    u16s::Array{UInt8,1}
+    s16s::Array{UInt8,1}
     sparse_indices::Base.Vector{Int64}
     LiteralProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct LiteralProto
-const __fnum_LiteralProto = Int[1,2,15,3,4,5,6,7,8,9,12,10,11,13,14]
+const __fnum_LiteralProto = Int[1,2,15,3,4,5,6,7,8,9,12,10,11,13,16,17,14]
 const __pack_LiteralProto = Symbol[:preds,:s32s,:s64s,:u32s,:u64s,:f32s,:f64s,:c64s,:sparse_indices]
 meta(t::Type{LiteralProto}) = meta(t, ProtoBuf.DEF_REQ, __fnum_LiteralProto, ProtoBuf.DEF_VAL, true, __pack_LiteralProto, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
