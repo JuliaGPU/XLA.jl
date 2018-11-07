@@ -80,7 +80,7 @@ mutable struct XRTAllocation
     end
     global run
     global _run
-    function _run(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+    function _run(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
         iob = PipeBuffer();
         writeproto(iob, config)
         str = String(take!(iob))
@@ -89,7 +89,7 @@ mutable struct XRTAllocation
             alloc = placeholder(String)
             # Make sure everything is on the same device
             @assert all(input->input.device == com.device, inputs)
-            _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->x.h, inputs)))
+            _op() = TensorFlow.Ops.xrt_execute(com.h, alloc, collect(map(x->gethandle!(sess, x).h, inputs)))
             return com.device === nothing ? _op() : with_device(_op, com.device)
         end
         h = run(com.sess, op, Dict(alloc => str))
@@ -100,15 +100,16 @@ mutable struct XRTAllocation
     end
 
     global _run_async
-    function _run_async(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+    function _run_async(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
         iob = PipeBuffer();
         writeproto(iob, config)
         str = String(take!(iob))
         local alloc
         op = as_default(com.sess.graph) do
+            handles = map(x->gethandle!(com.sess, x), inputs)
             # Make sure everything is on the same device
-            @assert all(input->input.device == com.device, inputs)
-            _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, inputs)))
+            @assert all(input->input.device == com.device, handles)
+            _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, handles)))
             return com.device === nothing ? _op() : with_device(_op, com.device)
         end
         h = run(com.sess, op, Dict(); async=true)
@@ -119,18 +120,26 @@ mutable struct XRTAllocation
     end
 
     global run_async
-    function run_async(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+    function run_async(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
         res = _run_async(com, inputs...; config=config)
-        T = convert(Type, XlaType(com.shape.result.element_type))
-        dims = (com.shape.result.dimensions...,)
-        XRTArray{T, dims, length(dims)}(res)
+        return if com.rt <: XRTArray
+            T = convert(Type, XlaType(com.shape.result.element_type))
+            dims = (com.shape.result.dimensions...,)
+            XRTArray{T, dims, length(dims)}(res)
+        else
+            XRTRemoteStruct{com.rt}(res)
+        end
     end
 
-    function run(com::XRTCompilation, inputs::XRTAllocation...; config=XRTExecutionConfig())
+    function run(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
         res = _run(com, inputs...; config=config)
-        T = convert(Type, XlaType(com.shape.result.element_type))
-        dims = (com.shape.result.dimensions...,)
-        XRTArray{T, dims, length(dims)}(res)
+        return if com.rt <: XRTArray
+            T = convert(Type, XlaType(com.shape.result.element_type))
+            dims = (com.shape.result.dimensions...,)
+            XRTArray{T, dims, length(dims)}(res)
+        else
+            XRTRemoteStruct{com.rt}(res)
+        end
     end
 end
 function Base.setproperty!(c::XRTAllocation, args...)
@@ -200,17 +209,22 @@ struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
     end
 end
 
-function Base.convert(::Type{Array}, A::XRTArray)
-    if A.storage.localstorage !== nothing
-        return copy(A.storage.localstorage)
-    end
-    rs = A.storage.remotestorage
+function read_literal(allocation::XRTAllocation)
     sess, dev, h = rs.sess, rs.device, rs.h
     op() = as_default(sess.graph) do
         run(sess, TensorFlow.Ops.xrt_read_literal(h))::String
     end
     literal = dev === nothing ? op() : with_device(op, dev)
-    A.storage.localstorage = convert(Array, readproto(IOBuffer(literal), LiteralProto()))
+    readproto(IOBuffer(literal), LiteralProto())
+end
+
+function Base.convert(::Type{Array}, A::XRTArray)
+    if A.storage.localstorage !== nothing
+        return copy(A.storage.localstorage)
+    end
+    rs = A.storage.remotestorage
+    lit = read_literal(rs)
+    A.storage.localstorage = convert(Array, lit)
     return copy(A.storage.localstorage)
 end
 
@@ -225,6 +239,10 @@ function gethandle!(sess, A::XRTArray)
     end
     A.storage.remotestorage = XRTAllocation(sess, convert(LiteralProto, A.storage.localstorage))
     A.storage.remotestorage
+end
+function gethandle!(sess, x::XRTAllocation)
+    @assert sess == x.sess
+    return x
 end
 
 const XRTMatrix{T, Dims} = XRTArray{T, Dims, 2} where {T, Dims}
@@ -297,3 +315,64 @@ Base._show_nonempty(io::IO, A::XRTArray, prefix::String) =
     Base._show_nonempty(io, convert(Array, A), prefix)
 Base._show_nonempty(io::IO, A::XRTMatrix, prefix::String) =
     Base._show_nonempty(io, convert(Array, A), prefix)
+
+# References a remote struct. We currently have a tension between
+# local structs of remote data and a remote reference to a struct.
+# Ideally we'd unify them eventually.
+struct XRTRemoteStruct{T}
+    storage::XRTAllocation
+end
+function gethandle!(sess, A::XRTRemoteStruct)
+    @assert sess == A.storage.sess
+    A.storage
+end
+Base.show(io::IO, x::XRTRemoteStruct{T}) where {T} =
+    println("Remote $(T)")
+
+struct_to_literal(A::XRTArray) = convert(LiteralProto, convert(Array, A))
+struct_to_literal(x::XLA.XLAScalar) = struct_to_literal(XRTArray(x))
+function struct_to_literal(x)
+    T = typeof(x)
+    LiteralProto(
+        shape = dtype_to_shape(T),
+        tuple_literals = collect(struct_to_literal(getfield(x, i)) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
+    )
+end
+
+function literal_to_struct(::Type{<:XRTArray}, x::LiteralProto)
+    # TODO: We could instead request the remote to create this for
+    # us. Otherwise we're doing a round trip here. Good enough for now.
+    XRTArray(convert(Array, x))
+end
+
+function literal_to_struct(::Type{<:XLA.XLAScalar}, x::LiteralProto)
+    # TODO: We could instead request the remote to create this for
+    # us. Otherwise we're doing a round trip here. Good enough for now.
+    convert(Array, x)[]
+end
+
+function literal_to_struct(T::Type, x::LiteralProto)
+    reconstructed_fields = Any[]
+    cur_proto_field = 1
+    for i = 1:fieldcount(T)
+        fT = fieldtype(T, i)
+        if representable(fTT)
+            push!(reconstructed_fields,
+                literal_to_struct(fT, x.tuple_literals[cur_proto_field]))
+            cur_proto_field += 1
+        else
+            push!(reconstructed_fields, fT.instance)
+        end
+    end
+    eval(Expr(:new, reconstructed_fields...))
+end
+
+function XRTRemoteStruct{T}(sess::Session, x::T) where {T}
+    XRTRemoteStruct{T}(XRTAllocation(sess, struct_to_literal(x)))
+end
+XRTRemoteStruct(sess::Session, x::T) where {T} = XRTRemoteStruct{T}(sess, x)
+
+function Base.convert(::Type{T}, strct::XRTRemoteStruct{T}) where {T}
+    proto = read_literal(strct.storage)
+    literal_to_struct(T, proto)
+end

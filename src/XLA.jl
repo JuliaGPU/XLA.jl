@@ -27,7 +27,7 @@ module XLA
 
     regen_proto() = run(ProtoBuf.protoc(`-I=/home/keno/tensorflow/ --julia_out=gen /home/keno/tensorflow/tensorflow/compiler/xrt/xrt.proto`))
 
-    export XRTArray, GenericHloOp, HloConstant, HloDot, HloSlice, ImmutableChain, XRTAllocation
+    export XRTArray, GenericHloOp, HloConstant, HloDot, HloSlice, ImmutableChain, XRTAllocation, XRTRemoteStruct
     export @tpu_compile, @tpu_dump, @tpu
 
     function __init__()

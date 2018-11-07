@@ -59,11 +59,12 @@ end
 
 compld = @tpu_compile epoch_loop(Val(20), xrtic, XRTArray(1), XRTArray(0.1f0))
 
-ic_alloc = XRTAllocation(sess, XLA.struct_to_literal(xrtic))
+ic_alloc = XRTRemoteStorage(sess, xrtic)
 
 nbatches = 25
 GC.gc()
-t = @async XLA.run_async(compld, ic_alloc, XLA.gethandle!(sess, XRTArray(nbatches)), XLA.gethandle!(sess, XRTArray(0.1f0)))
+t = @async XLA.run_async(compld, ic_alloc,
+    XRTArray(nbatches), XRTArray(0.1f0))
 
 const tf = TensorFlow
 let n = 0
@@ -120,3 +121,5 @@ for i = 1:nbatches
 end
 loss = outfeed(Tuple{XRTArray{Float32, (), 0}})
 @info "Final iteration loss was $(loss)"
+
+trained_model = fetch(t)

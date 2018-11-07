@@ -355,13 +355,3 @@ function dtype_to_shape(T::DataType; tensorflow_order=false)
         tuple_shapes = collect(dtype_to_shape(fieldtype(T, i); tensorflow_order=tensorflow_order) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
     )
 end
-
-struct_to_literal(A::XRTArray) = convert(LiteralProto, convert(Array, A))
-struct_to_literal(x::XLA.XLAScalar) = struct_to_literal(XRTArray(x))
-function struct_to_literal(x)
-    T = typeof(x)
-    LiteralProto(
-        shape = dtype_to_shape(T),
-        tuple_literals = collect(struct_to_literal(getfield(x, i)) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
-    )
-end
