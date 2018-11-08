@@ -141,7 +141,6 @@ function Base.convert(::Type{Array}, proto::LiteralProto)
         b = to_data(proto)
         perm = tuple((x+1 for x in s.layout.minor_to_major)...)
         r = reshape(b, tuple(collect(s.dimensions)[collect(perm)]...))
-        @Base.show size(r)
         return convert(Array, permutedims(r, Base.invperm(perm)))
     else
         b = to_data(proto)

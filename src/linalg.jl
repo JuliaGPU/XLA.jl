@@ -422,6 +422,14 @@ function Base.hcat(a::XRTArray...)
     end
 end
 
-function Base.vcat(a::XRTArray...)
-    HloConcatenate(0)(a...)
+function Base.vcat(a::XRTArray{T}...) where {T}
+    b = ntuple(length(a)) do i
+        ai = a[i]
+        if ndims(ai) < 1
+            HloBroadcast((), (1,))(ai)
+        else
+            ai
+        end
+    end
+    HloConcatenate(0)(b...)
 end
