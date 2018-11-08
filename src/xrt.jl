@@ -349,7 +349,7 @@ function literal_to_struct(T::Type, x::LiteralProto)
     cur_proto_field = 1
     for i = 1:fieldcount(T)
         fT = fieldtype(T, i)
-        if representable(fTT)
+        if representable(fT)
             push!(reconstructed_fields,
                 literal_to_struct(fT, x.tuple_literals[cur_proto_field]))
             cur_proto_field += 1
