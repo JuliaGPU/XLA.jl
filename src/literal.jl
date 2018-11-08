@@ -50,13 +50,15 @@ function assign_data!(lp::LiteralProto, a::Vector{<:XLAScalar})
     if eltype(a) == Bool
         lp.preds = vec(a)
     elseif eltype(a) == Int8
-        lp.u8s = vec(a)
+        lp.s8s = vec(a)
     elseif eltype(a) == Int16
-        lp.u16s = collect(reinterpret(UInt8, vec(a)))
+        lp.s16s = collect(reinterpret(UInt8, vec(a)))
     elseif eltype(a) == Int32
         lp.s32s = vec(a)
     elseif eltype(a) == Int64
         lp.s64s = vec(a)
+    elseif eltype(a) == UInt8
+        lp.u8s = vec(a)
     elseif eltype(a) == UInt16
         lp.u16s = collect(reinterpret(UInt8, vec(a)))
     elseif eltype(a) == UInt32
