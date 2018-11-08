@@ -94,9 +94,9 @@ using XLA
 using TensorFlow
 ```
 
-Set up the TPU session. Replace 10.240.1.2 with your TPU IP if it is different.
+Set up the TPU session. Replace 10.240.x.x with your TPU IP. The IP can be found at https://console.cloud.google.com/compute/tpus.
 ```julia
-sess = Session(Graph(); target="grpc://10.240.1.2:8470")
+sess = Session(Graph(); target="grpc://10.240.x.x:8470")
 run(sess, TensorFlow.Ops.configure_distributed_tpu())
 ```
 
@@ -118,7 +118,7 @@ f(x) = sum(x*x)
 data = XRTArray(rand(Float32,10^4,10^4))
 f_compiled = @tpu_compile f(data)
 run(f_compiled, data)
-teraflops = (@time run(f_compiled, data)) / (2*(1e4)^3) / 1e12
+teraflops = 2*1e4^3 / (@elapsed run(f_compiled, data)) / 1e12
 ```
 
 ## You're now ready to use TPUs
