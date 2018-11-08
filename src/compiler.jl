@@ -94,8 +94,8 @@ function _compile_to_xla!(computations, comp, ir, sv)
         isa(stmt, ReturnNode) && continue
         @check_ir !isa(stmt, PhiNode) "Unsupported control flow found in function"
         if isa(stmt, PiNode)
+            ssa_vals[stmt_idx] = hlo_eval(stmt.val)
             continue
-            #ssa_vals[stmt_idx] = hlo_eval(stmt.args[1])
         end
         if isexpr(stmt, :new) || (isexpr(stmt, :call) && Compiler.is_known_call(stmt, tuple, ir, sparams))
             args = Any[]

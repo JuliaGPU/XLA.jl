@@ -416,6 +416,8 @@ function change_eltype(T::Type, x::XRTArray)
     GenericHloOp{:convert}(T, size(x))(x)
 end
 change_eltype(::Type{T}, x::XRTArray{T}) where {T} = x
+Base.convert(::Type{XRTArray{T}}, x::XRTArray{S}) where {T,S} = change_eltype(T, x)
+
 function Base.hcat(a::XRTArray...)
     let eT = Base.promote_eltype(a...)
         hcat(map(a->change_eltype(eT, a), a)...)
