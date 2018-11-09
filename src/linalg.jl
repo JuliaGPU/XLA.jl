@@ -283,13 +283,14 @@ function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
 end
 
 function NNlib.meanpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
-    # TODO: Need to divide by the size of the window here
-    HloReduceWindow{typeof(+)}(
+    s = HloReduceWindow{typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(+, x, XRTArray(zero(eltype(x))))
+    s ./ XRTArray(convert(eltype(x), prod(k)))
 end
 
 function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
+    dy ./ XRTArray(convert(eltype(x), prod(k)))
     HloSelectAndScatter{typeof(>=), typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(>=, +, x, dy, XRTArray(zero(eltype(x))))
@@ -485,4 +486,34 @@ function Base.vcat(a::XRTArray{T}...) where {T}
         end
     end
     HloConcatenate(0)(b...)
+end
+
+using Statistics
+@Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims) = prod(size(T)[[dims...]])
+dimsum(A, dims) = sum(A; dims=dims)
+function Statistics.mean(A::XRTArray; dims=:)
+    summed = dimsum(A, dims)
+    x = count_summands(typeof(A), dims)
+    nsummands = XRTArray(x)
+    summed ./ nsummands
+end
+
+Base.@pure @noinline function compute_dropdims_d(A, dims)
+    for i in 1:length(dims)
+        1 <= dims[i] <= ndims(A) || throw(ArgumentError("dropped dims must be in range 1:ndims(A)"))
+        length(axes(A, dims[i])) == 1 || throw(ArgumentError("dropped dims must all be size 1"))
+        for j = 1:i-1
+            dims[j] == dims[i] && throw(ArgumentError("dropped dims must be unique"))
+        end
+    end
+    d = ()
+    for i = 1:ndims(A)
+        if !in(i, dims)
+            d = tuple(d..., axes(A, i))
+        end
+    end
+    return d
+end
+function Base._dropdims(A::XRTArray, dims::Base.Dims)
+    reshape(A, compute_dropdims_d(typeof(A), dims))
 end

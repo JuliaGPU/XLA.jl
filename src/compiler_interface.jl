@@ -5,7 +5,7 @@ function code_typed_argtys(@nospecialize(types=Tuple); optimize=true, params=not
     world = ccall(:jl_get_world_counter, UInt, ())
     params = params === nothing ? Core.Compiler.Params(world) : params
     for x in Base._methods_by_ftype(types, -1, world)
-        meth = Base.func_for_method_checked(x[3], types.parameters[2:end])
+        meth = Base.func_for_method_checked(x[3], Tuple{types.parameters[2:end]...})
         argtypes = nothing
         if constvals !== nothing
             argtypes = Vector(undef, length(types.parameters)+1)

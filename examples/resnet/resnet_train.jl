@@ -5,6 +5,7 @@ using TensorFlow
 using Metalhead
 using Flux
 using Zygote
+using Statistics
 
 include("resnet.jl")
 
@@ -41,12 +42,43 @@ function compute_affine_shape(x)
 end
 @Zygote.grad compute_affine_shape(x) = compute_affine_shape(x), Δ->(nothing,)
 
-function (BN::TPUBatchNorm)(x)
-  γ, β = BN.γ, BN.β
+# This is a bit of a trick. We use Zygote's backward pass infrastructure
+# to backpropagate the batchnorm statistics to the parameter update
+function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ε, x)
+  @assert !BN.active
   affine_shape = compute_affine_shape(x)
-
   μ = reshape(BN.μ, affine_shape...)
   σ = reshape(BN.σ, affine_shape...)
+  (μ, σ)
+end
+
+@Zygote.grad function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ϵ, x)
+  ϵ = convert(eltype(x), bn_ϵ)
+  axes = (1, 2, 4)
+  μ = mean(x, dims = axes)
+  meansub = (x .- μ)
+  sq = meansub .* meansub
+  σ = sqrt.(mean(sq, dims = axes) .+ ϵ)
+  m = let sz = size(x), dims = length(size(x))
+    prod(ntuple(i->sz[i], dims-2)) * sz[end]
+  end
+  (μ, σ), let μ=dropdims(μ, dims = axes),
+              σ=dropdims(σ, dims = axes) .* XRTArray(convert(eltype(x), m) / convert(eltype(x), m - 1))
+    function(Δ)
+      (nothing, μ, σ, nothing, nothing)
+    end
+  end
+end
+
+
+function (BN::TPUBatchNorm)(x)
+  γ = BN.γ
+  β = BN.β
+  affine_shape = compute_affine_shape(x)
+
+  tup = batchnorm_statistics(BN.active, BN.μ, BN.σ, BN.ϵ, x)
+  μ = first(tup)
+  σ = first(Base.tail(tup))
 
   let λ = BN.λ
     λ.(reshape(γ, affine_shape...) .* ((x .- μ) ./ σ) .+ reshape(β, affine_shape...))
@@ -58,7 +90,7 @@ map_to_tpu(x::Chain) = ImmutableChain(map(map_to_tpu, x.layers)...)
 map_to_tpu(x::AbstractArray) = XRTArray(Float32.(Flux.data(x)))
 map_to_tpu(x::Flux.BatchNorm) = TPUBatchNorm(map(map_to_tpu, Flux.children(x))...)
 map_to_tpu(x) = Flux.mapchildren(map_to_tpu, x)
-resnet_host = Flux.mapleaves(x->isa(x, AbstractArray) ? Float32.(Flux.data(x)) : x, Metalhead.resnet50())
+resnet_host = Flux.mapleaves(x->isa(x, AbstractArray) ? Float32.(Flux.data(x)) : x, resnet50())
 resnet = map_to_tpu(resnet_host)
 
 function my_derivative_with_loss(f, args...)
@@ -83,6 +115,19 @@ function update_params(model, updates, η)
         tuple(new_fields...) :
         typeof(model)(new_fields...)
 end
+
+function update_params(BN::TPUBatchNorm{F,V,W,N}, updates, η) where {F,V,W,N}
+    mtm = BN.momentum
+    TPUBatchNorm{F,V,W,N}(
+      update_params(BN.λ, updates.λ, η),
+      update_params(BN.β, updates.β, η),
+      update_params(BN.γ, updates.γ, η),
+      (1 - mtm) .* BN.μ + mtm .* updates.μ,
+      (1 - mtm) .* BN.σ + mtm .* updates.σ,
+      BN.ϵ, mtm, BN.active
+    )
+end
+
 
 function make_one_hot(data)
     operand = zero(XRTArray{Float32, (1000, 20), 2})
@@ -117,7 +162,7 @@ function epoch_loop(::Val{batch_size}, xrtic, nbatches, η) where {batch_size}
     return xrtic
 end
 
-compld = @tpu_compile epoch_loop(Val(20), resnet, XRTArray(1), XRTArray(0.1f0))
+#compld = @tpu_compile epoch_loop(Val(20), resnet, XRTArray(1), XRTArray(0.1f0))
 
 
 function evaluate2(xrtic, x)
@@ -165,4 +210,4 @@ function bisect_residual(b, n)
     XLA.code_typed_xla(evaluate2, Tuple{typeof(remainder), typeof(XRTArray(y))})[1]
 end
 
-bisect_one(17)
+bisect_residual(18, 2)

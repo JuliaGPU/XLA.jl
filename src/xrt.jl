@@ -261,6 +261,9 @@ end
 Base.eltype(A::Type{<:XRTArray{T}}) where {T} = T
 Base.size(A::Type{<:XRTArray{T, Dims}} where T) where {Dims} = Dims
 Base.size(A::Type{<:XRTArray{T, Dims}} where T, i) where {Dims} = i <= length(Dims) ? Dims[i] : 1
+@inline function Base.axes(A::Type{<:XRTArray{<:Any, Dims}}, d) where {Dims}
+    d <= length(Dims) ? axes(A)[d] : Base.OneTo(1)
+end
 
 Base.eltype(A::XRTArray{T}) where {T} = T
 Base.size(A::XRTArray{T, Dims}) where {T, Dims} = Dims
