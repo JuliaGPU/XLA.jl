@@ -461,17 +461,6 @@ function XRTArray(a::UnitRange{T}) where {T}
     HloIota(T, (length(a),), 0)() .+ first(a)
 end
 
-function Base.hcat(a::XRTArray{T}...) where {T}
-    b = ntuple(length(a)) do i
-        ai = a[i]
-        if ndims(ai) < 2
-            HloBroadcast(ntuple(i->i-1, ndims(ai)), (length(ai), 1))(ai)
-        else
-            ai
-        end
-    end
-    HloConcatenate(1)(b...)
-end
 function change_eltype(T::Type, x::XRTArray)
     GenericHloOp{:convert}(T, size(x))(x)
 end
@@ -480,23 +469,36 @@ Base.convert(::Type{XRTArray{T}}, x::XRTArray{S}) where {T,S} = change_eltype(T,
 Base.convert(::Type{XRTArray{T}}, x::XRTArray{T}) where {T} = x
 Base.convert(::Type{XRTArray}, x::XRTArray) = x
 
-function Base.hcat(a::XRTArray...)
-    let eT = Base.promote_eltype(a...)
-        hcat(map(a->change_eltype(eT, a), a)...)
+@Base.pure @noinline function padding_tuple(aiT::Type{<:XRTArray}, dims::Int)
+    ntuple(_->1, Val(dims))
+end
+
+struct ntupler{dims, T}
+    a::T
+end
+function (nt::ntupler{dims, T})(i::Int) where {dims, T}
+    ai = nt.a[i]
+    if ndims(ai) < dims
+        pt = ntuple(_->1, dims-ndims(ai))
+        HloBroadcast(ntuple(i->i-1, ndims(ai)), (size(ai)...,
+            pt...))(ai)
+    else
+        ai
     end
 end
 
-function Base.vcat(a::XRTArray{T}...) where {T}
-    b = ntuple(length(a)) do i
-        ai = a[i]
-        if ndims(ai) < 1
-            HloBroadcast((), (1,))(ai)
-        else
-            ai
-        end
-    end
-    HloConcatenate(0)(b...)
+function _cat(dims::Int, a::XRTArray{T}...) where {T}
+    b = ntuple(ntupler{dims, typeof(a)}(a), length(a))
+    HloConcatenate(dims-1)(b...)
 end
+function _cat(dims::Int, a::XRTArray...)
+    let eT = Base.promote_eltype(a...)
+        _cat(dims, map(a->change_eltype(eT, a), a)...)
+    end
+end
+Base.hcat(a::XRTArray...) where {T} = _cat(2, a...)
+Base.vcat(a::XRTArray...) where {T} = _cat(1, a...)
+Base.cat(a::XRTArray...; dims) = _cat(dims, a...)
 
 using Statistics
 @Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims) = prod(size(T)[[dims...]])
