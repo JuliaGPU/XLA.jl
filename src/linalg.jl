@@ -496,7 +496,7 @@ using Statistics
 dimsum(A, dims) = sum(A; dims=dims)
 function Statistics.mean(A::XRTArray; dims=:)
     summed = dimsum(A, dims)
-    x = count_summands(typeof(A), dims)
+    x = convert(eltype(A), count_summands(typeof(A), dims))
     nsummands = XRTArray(x)
     summed ./ nsummands
 end
