@@ -50,17 +50,22 @@ Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{T}) where T = x
 
 # A couple of scalar embeddings (could use casette in the future)
 using Base.Meta
-for (binop, xlaop) in
-        ((:+, :add),
+for (binop, xlaop) in (
+        (:+, :add),
          (:-, :subtract),
          (:/, :divide),
-         (:*, :multiply))
+         (:*, :multiply),
+         (:&, :and),
+         (:<<, Symbol("shift-left")),
+         (:>>>, Symbol("shift-right-logical")))
     @eval Base.$(binop)(A::XRTScalar{T},
                         B::XRTScalar{T}) where {T<:XLAScalar} =
         GenericHloOp{$(quot(xlaop))}(T, ())(A, B)
     @eval Base.$(binop)(A::XRTScalar, B::XRTScalar, args::XRTScalar{<:XLAScalar}...) =
         $(binop)(promote(A, B, args...)...)
 end
+Base.:>>(A::XRTScalar{<:Unsigned}, B::XRTScalar) = A >>> B
+Base.:>>(A::XRTScalar{T}, B::XRTScalar) where {T <: Signed} = GenericHloOp{Symbol("shift-right-arithmetic")}(T, ())(A, B)
 
 
 # XRT Scalars are not numbers so import some functions manually
@@ -472,6 +477,8 @@ function change_eltype(T::Type, x::XRTArray)
 end
 change_eltype(::Type{T}, x::XRTArray{T}) where {T} = x
 Base.convert(::Type{XRTArray{T}}, x::XRTArray{S}) where {T,S} = change_eltype(T, x)
+Base.convert(::Type{XRTArray{T}}, x::XRTArray{T}) where {T} = x
+Base.convert(::Type{XRTArray}, x::XRTArray) = x
 
 function Base.hcat(a::XRTArray...)
     let eT = Base.promote_eltype(a...)
