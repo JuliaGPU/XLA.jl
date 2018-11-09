@@ -46,6 +46,7 @@ end
 # want to make sure to more closely match julia semantics.
 Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{S}) where {T,S} = GenericHloOp{:convert}(T, ())(x)
 Base.convert(::Type{XRTScalar{T}}, x::T) where T = XRTScalar{T}(x)
+Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{T}) where T = x
 
 # A couple of scalar embeddings (could use casette in the future)
 using Base.Meta
@@ -286,11 +287,13 @@ function NNlib.meanpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
     s = HloReduceWindow{typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(+, x, XRTArray(zero(eltype(x))))
-    s ./ XRTArray(convert(eltype(x), prod(k)))
+    wsize = convert(eltype(x), prod(k))
+    s ./ XRTArray(wsize)
 end
 
 function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
-    dy ./ XRTArray(convert(eltype(x), prod(k)))
+    wsize = convert(eltype(x), prod(k))
+    dy ./ XRTArray(wsize)
     HloSelectAndScatter{typeof(>=), typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(>=, +, x, dy, XRTArray(zero(eltype(x))))

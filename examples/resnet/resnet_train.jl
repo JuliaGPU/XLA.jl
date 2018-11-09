@@ -10,14 +10,14 @@ using Statistics
 include("resnet.jl")
 
 # We modify (the implementation of) batchnorm to be more ammenable to TPUs.
-struct TPUBatchNorm{F,V,W,N}
+struct TPUBatchNorm{F,V,W}
    λ::F  # activation function
    β::V  # bias
    γ::V  # scale
    μ::W  # moving mean
    σ::W  # moving std
-   ϵ::N
-   momentum::N
+   ϵ::XRTArray{Float32, (), 0}
+   momentum::XRTArray{Float32, (), 0}
    active::Bool
 end
 
@@ -85,10 +85,12 @@ function (BN::TPUBatchNorm)(x)
   end
 end
 
-map_to_tpu(x::Float64) = convert(Float32, x)
+map_to_tpu(x::Bool) = x
+map_to_tpu(x::Real) = XRTArray(convert(Float32, x))
 map_to_tpu(x::Chain) = ImmutableChain(map(map_to_tpu, x.layers)...)
 map_to_tpu(x::AbstractArray) = XRTArray(Float32.(Flux.data(x)))
-map_to_tpu(x::Flux.BatchNorm) = TPUBatchNorm(map(map_to_tpu, Flux.children(x))...)
+map_to_tpu(x::Flux.BatchNorm) = TPUBatchNorm(
+  map(map_to_tpu, Flux.children(x))...)
 map_to_tpu(x) = Flux.mapchildren(map_to_tpu, x)
 resnet_host = Flux.mapleaves(x->isa(x, AbstractArray) ? Float32.(Flux.data(x)) : x, resnet50())
 resnet = map_to_tpu(resnet_host)
@@ -122,8 +124,8 @@ function update_params(BN::TPUBatchNorm{F,V,W,N}, updates, η) where {F,V,W,N}
       update_params(BN.λ, updates.λ, η),
       update_params(BN.β, updates.β, η),
       update_params(BN.γ, updates.γ, η),
-      (1 - mtm) .* BN.μ + mtm .* updates.μ,
-      (1 - mtm) .* BN.σ + mtm .* updates.σ,
+      (XRTArray(1f0) - mtm) .* BN.μ + mtm .* updates.μ,
+      (XRTArray(1f0) - mtm) .* BN.σ + mtm .* updates.σ,
       BN.ϵ, mtm, BN.active
     )
 end
@@ -162,7 +164,8 @@ function epoch_loop(::Val{batch_size}, xrtic, nbatches, η) where {batch_size}
     return xrtic
 end
 
-#compld = @tpu_compile epoch_loop(Val(20), resnet, XRTArray(1), XRTArray(0.1f0))
+sess = Session(Graph(); target="grpc://localhost:8470")
+compld = @tpu_compile epoch_loop(Val(20), resnet, XRTArray(1), XRTArray(0.1f0))
 
 
 function evaluate2(xrtic, x)
