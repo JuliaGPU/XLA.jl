@@ -496,8 +496,8 @@ function _cat(dims::Int, a::XRTArray...)
         _cat(dims, map(a->change_eltype(eT, a), a)...)
     end
 end
-Base.hcat(a::XRTArray...) where {T} = _cat(2, a...)
-Base.vcat(a::XRTArray...) where {T} = _cat(1, a...)
+Base.hcat(a::XRTArray...) = _cat(2, a...)
+Base.vcat(a::XRTArray...) = _cat(1, a...)
 Base.cat(a::XRTArray...; dims) = _cat(dims, a...)
 
 using Statistics

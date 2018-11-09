@@ -118,9 +118,9 @@ function update_params(model, updates, η)
         typeof(model)(new_fields...)
 end
 
-function update_params(BN::TPUBatchNorm{F,V,W,N}, updates, η) where {F,V,W,N}
+function update_params(BN::TPUBatchNorm{F,V,W}, updates, η) where {F,V,W}
     mtm = BN.momentum
-    TPUBatchNorm{F,V,W,N}(
+    TPUBatchNorm{F,V,W}(
       update_params(BN.λ, updates.λ, η),
       update_params(BN.β, updates.β, η),
       update_params(BN.γ, updates.γ, η),
@@ -132,10 +132,10 @@ end
 
 
 function make_one_hot(data)
-    operand = zero(XRTArray{Float32, (1000, 20), 2})
-    updates = XLA.HloBroadcast((), (1, 20))(XRTArray(1f0))
+    operand = zero(XRTArray{Float32, (1000, length(data), 2})
+    updates = XLA.HloBroadcast((), (1, length(data)))(XRTArray(1f0))
     update_computation = (x,y)->y
-    scatter_indices = hcat(XRTArray(0:19), data)
+    scatter_indices = hcat(XRTArray(0:(length(data)-1)), data)
     sdims = XLA.ScatterDimNums(
         #= update_window_dims =# (0,),
         #= inserted_window_dims =# (0,),
