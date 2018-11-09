@@ -53,9 +53,6 @@ function Base.close(c::XRTCompilation)
 end
 
 const tf = TensorFlow
-using Libdl
-const run_func = Ref{Ptr{Cvoid}}(C_NULL)
-const the_ptr = Ref{Ptr{Cvoid}}(C_NULL)
 mutable struct XRTAllocation
     sess
     device::Union{Nothing, TensorFlow.Device}

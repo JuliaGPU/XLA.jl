@@ -163,7 +163,6 @@ function shape_infer(op::HloSelectAndScatter{T, S}, ::Type{T}, ::Type{S}, args::
 end
 
 function shape_infer(op::HloScatter, T::Type, args...)
-    @Base.show (op, T, args)
     (eltype(args[1]), size(args[1]))
 end
 

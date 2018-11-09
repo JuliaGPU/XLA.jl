@@ -6,6 +6,8 @@ using Metalhead
 using Flux
 using Zygote
 
+include("resnet.jl")
+
 # We modify (the implementation of) batchnorm to be more ammenable to TPUs.
 struct TPUBatchNorm{F,V,W,N}
    λ::F  # activation function
@@ -115,7 +117,7 @@ function epoch_loop(::Val{batch_size}, xrtic, nbatches, η) where {batch_size}
     return xrtic
 end
 
-#compld = @tpu_compile epoch_loop(Val(20), resnet, XRTArray(1), XRTArray(0.1f0))
+compld = @tpu_compile epoch_loop(Val(20), resnet, XRTArray(1), XRTArray(0.1f0))
 
 
 function evaluate2(xrtic, x)
