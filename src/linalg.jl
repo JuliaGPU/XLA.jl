@@ -45,6 +45,7 @@ end
 # Scalar conversions - Happens via HloConvert. In the future, we may
 # want to make sure to more closely match julia semantics.
 Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{S}) where {T,S} = GenericHloOp{:convert}(T, ())(x)
+Base.convert(::Type{XRTScalar{T}}, x::T) where T = XRTScalar{T}(x)
 
 # A couple of scalar embeddings (could use casette in the future)
 using Base.Meta
@@ -217,13 +218,12 @@ function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray{T}, inpu
     sz_ = size(kernel); isz = size(input); osz = size(dy)
     windows = ntuple(length(pad_)) do i
         (sz, p, s, d) = sz_[i], pad_[i], stride_[i], dilation_[i]
-        @assert s == 1
-        @assert d == 1
         padded_out_size = isz[i] + sz - 1
         pad_before = sz - 1 - p
-        pad_after = padded_out_size - osz[i] - pad_before
+        expanded_osz = (osz[i]-1)*s + 1
+        pad_after = padded_out_size - expanded_osz - pad_before
         # N.B.: The window reversal flag is flipped here
-        WindowDims(sz, s, pad_before, pad_after, d, 1, false)
+        WindowDims(sz, 1, pad_before, pad_after, d, s, false)
     end
     convdims = ConvDimNums(
         3, 2, (0, 1),
@@ -232,7 +232,9 @@ function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray{T}, inpu
         3, 2, (0, 1),
         3, 2, (0, 1)
     )
-    HloConv(windows, convdims)(dy, mirrored)
+    r = HloConv(windows, convdims)(dy, mirrored)
+    @assert size(r) == size(input)
+    r
 end
 
 function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, input::XRTArray{T}, kernel::XRTArray) where {T, pad, stride, dilation}
@@ -244,13 +246,12 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
     input = HloRev((0,1))(input)
     windows = ntuple(length(pad_)) do i
         (sz, p, s, d) = sz_[i], pad_[i], stride_[i], dilation_[i]
-        @assert s == 1
-        @assert d == 1
-        padded_in_size = osz[i] + sz - 1
+        expanded_osz = (osz[i]-1)*s + 1
+        padded_in_size = expanded_osz + (sz - 1) * d
         pad_total = padded_in_size - isz[i]
         pad_before = max(div(pad_total, 2), 0)
         pad_after = pad_total - pad_before
-        WindowDims(osz[i], s, pad_before, pad_after, d, 1, false)
+        WindowDims(osz[i], d, pad_before, pad_after, s, 1, false)
     end
     convdims = ConvDimNums(
         # N.B. The input and output dimensions are exchanged here from the
@@ -282,6 +283,7 @@ function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
 end
 
 function NNlib.meanpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
+    # TODO: Need to divide by the size of the window here
     HloReduceWindow{typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(+, x, XRTArray(zero(eltype(x))))
@@ -291,6 +293,55 @@ function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_
     HloSelectAndScatter{typeof(>=), typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(>=, +, x, dy, XRTArray(zero(eltype(x))))
+end
+
+function make_pad_config(x, k, pad, stride)
+    k_, pad_, stride_ = NNlib.padtuple(x, k),
+                        NNlib.padtuple(x, pad),
+                        NNlib.padtuple(x, stride)
+    windows = ntuple(ndims(x)) do i
+        (sz, p, s) = i <= length(k) ? (k[i], pad[i], stride[i]) : (1, 0, 1)
+        #@assert p == 0 # TODO: What does this do? Probably reduce the edge padding
+        PaddingConfigDim(sz - 1, sz - 1, s - 1)
+    end
+end
+
+function NNlib.∇meanpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
+    # General algorithm for ∇meanpool.
+    # The idea here is relatively simple. Without loss of generality, we can ignore the
+    # division by a constant - i.e. we're looking at the gradient of a (potentially,
+    # padded and strided sum of a window). These windows can be overlapping, so in general,
+    # we once again need to do a summed reduction of all the gradients. We do so as follows:
+    # Suppose we have a 3x3 array:
+    #
+    #   123
+    #   456
+    #   789
+    #
+    # And we sum in a 2x2 window, i.e.
+    # our gradients look like:
+    #
+    #   ab
+    #   cd
+    #
+    # with a=1+2+4+5, c=4+5+7+8, etc. To compute, the gradient, we pad up to
+    #
+    #  0000
+    #  0ab0
+    #  0cd0
+    #  0000
+    #
+    # and once again sum with a 2x2 window. It is easy to check that this procedure gives
+    # the correct answer. If we have a stride, we need to add interior padding in addition.
+    # Another way to think of this and arrive at the same result is to see
+    # the summation as a convolution with an all-ones kernel.
+    #
+    # TODO: Does it make sense to special case to the case of non-overlapping windows
+    # or does XLA take care of that?
+    pdy = HloPad(make_pad_config(x, k, pad, stride))(dy, XRTArray(zero(eltype(dy))))
+    HloReduceWindow{typeof(+)}(
+        make_pooling_windows(x, k, pad, map(_->1, k))
+    )(+, pdy, XRTArray(zero(eltype(x))))
 end
 
 function NNlib.softmax(xs::XRTArray)

@@ -43,3 +43,6 @@ for (M, f, arity) in DiffRules.diffrules()
 end
 
 @grad XRTArray(a::Real) = XRTArray(a), Δ -> (Δ,)
+
+# This is necessary, because even XRT scalars are AbstractArrays
+Zygote.accum(a::XRTArray, b::XRTArray) = a+b

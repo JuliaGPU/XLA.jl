@@ -51,7 +51,7 @@ function strided_bound(bound, window_size, stride)
     return div(bound - window_size, stride) + 1
 end
 
-function infer_window_output_shape(base_shape, windows)
+@Base.pure function infer_window_output_shape(base_shape, windows)
     ntuple(length(windows)) do i
         window = windows[i]
         dilated_base = dilated_bound(base_shape[i], window.base_dilation)
@@ -65,6 +65,18 @@ function shape_infer(op::HloReduceWindow{fT}, ::Type{<:fT},
                      args::Type{<:XRTArray}...) where {fT}
     # For now, assume reductions preserve type
     (eltype(args[1]), infer_window_output_shape(size(args[1]), op.window))
+end
+
+@Base.pure function pad_output_size(op::HloPad, arg::Type{<:XRTArray})
+    sz = size(arg)
+    ntuple(length(op.padding)) do i
+        pad = op.padding[i]
+        pad.edge_padding_low + pad.edge_padding_low + (sz[i]-1)*pad.interior_padding + sz[i]
+    end
+end
+
+function shape_infer(op::HloPad, arg::Type{<:XRTArray}, val::Type{<:XRTArray})
+    (eltype(arg), pad_output_size(op, arg))
 end
 
 function updims(s)

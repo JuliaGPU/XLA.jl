@@ -281,6 +281,25 @@ function fill_fields!(proto::HloInstructionProto, r::HloIota)
     proto.dimensions = Int[r.iota_dimension]
 end
 
+const PaddingConfigDimension = PaddingConfig_PaddingConfigDimension
+struct PaddingConfigDim
+    edge_padding_low::Int64
+    edge_padding_high::Int64
+    interior_padding::Int64
+end
+Base.convert(::Type{PaddingConfigDimension}, p::PaddingConfigDim) =
+    PaddingConfigDimension(
+        edge_padding_low = p.edge_padding_low,
+        edge_padding_high = p.edge_padding_high,
+        interior_padding = p.interior_padding)
+
+struct HloPad <: HloOp{:pad}
+    padding::NTuple{N, PaddingConfigDim} where {N}
+end
+function fill_fields!(proto::HloInstructionProto, r::HloPad)
+    proto.padding_config = PaddingConfig(dimensions=[convert(PaddingConfigDimension, p) for p in r.padding])
+end
+
 function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_id(), name=nothing)
     proto = HloInstructionProto(
         opcode=opcode,

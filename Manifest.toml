@@ -701,8 +701,8 @@ version = "0.7.0"
 
 [[Zygote]]
 deps = ["DiffRules", "ForwardDiff", "IRTools", "InteractiveUtils", "MacroTools", "NNlib", "NaNMath", "Random", "Requires", "SpecialFunctions", "Test"]
-git-tree-sha1 = "f44bc8c75f9de354e72b9963f4aeb5b1c089e5bf"
+git-tree-sha1 = "a17cdb3fab7b2ae945ffb01cb88a03b787c3beb6"
 repo-rev = "kf/tpuwip"
-repo-url = "https://github.com/FluxML/Zygote.jl"
+repo-url = "https://github.com/FluxML/Zygote.jl.git"
 uuid = "e88e6eb3-aa80-5325-afca-941959d7151f"
 version = "0.1.0+"
