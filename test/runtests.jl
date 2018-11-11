@@ -11,5 +11,6 @@ try
         run(@tpu_compile f())
     end, XRTArray)
 finally
+    GC.gc() # Try running finalizers, before the process exits
     kill(xrt_server_process)
 end
