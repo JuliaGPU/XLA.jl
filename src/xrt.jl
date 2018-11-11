@@ -1,3 +1,5 @@
+const tf = TensorFlow
+
 function current_device(sess)
     dvs = sess.graph.op_context.devices
     isempty(dvs) ? nothing : dvs[end]
@@ -11,6 +13,16 @@ function run_external_optimizer(snp)
     close(p.in)
     buf = IOBuffer(read(p))
     readproto(buf, HloSnapshot())
+end
+
+# Manually implement the xrt_compile op to plaster over 1.12 vs nightly
+# differences. Nightly adds a second output.
+function make_xrt_compile(graph)
+    alloc = placeholder(String)
+    desc = tf.NodeDescription(graph, "XRTCompile", tf.get_name("XRTCompile"))
+    tf.add_input(desc, alloc)
+    cc = tf.Tensor(tf.Operation(desc), 1)
+    cc, alloc
 end
 
 mutable struct XRTCompilation
@@ -28,15 +40,11 @@ mutable struct XRTCompilation
         # try out optimizations before they're deployed to TPUs.
         #comp.hlo_snapshot = run_external_optimizer(comp.hlo_snapshot)
         writeproto(buf, comp)
-        local alloc
-        op = as_default(sess.graph) do
-            alloc = placeholder(String)
-            TensorFlow.Ops.xrt_compile(alloc)
-        end
+        op, alloc = make_xrt_compile(sess.graph)
         res = new(sess,
             current_device(sess),
             comp.hlo_snapshot.hlo.hlo_module.host_program_shape, rt,
-            run(sess, op, Dict(alloc => String(take!(buf))))[1])
+            run(sess, op, Dict(alloc => String(take!(buf)))))
         finalizer(close, res)
         res
     end
@@ -65,7 +73,6 @@ function Base.close(c::XRTCompilation)
     Core.setfield!(c, :h, -1)
 end
 
-const tf = TensorFlow
 mutable struct XRTAllocation
     sess
     device::Union{Nothing, TensorFlow.Device}
