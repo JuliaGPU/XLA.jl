@@ -249,7 +249,6 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
     dilation_ = NNlib.padtuple(kernel, dilation)
     sz_ = size(kernel); isz = size(input); osz = size(dy)
-    input = HloRev((0,1))(input)
     windows = ntuple(length(pad_)) do i
         (sz, p, s, d) = sz_[i], pad_[i], stride_[i], dilation_[i]
         expanded_osz = (osz[i]-1)*s + 1
@@ -257,7 +256,7 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
         pad_total = padded_in_size - isz[i]
         pad_before = max(div(pad_total, 2), 0)
         pad_after = pad_total - pad_before
-        WindowDims(osz[i], d, pad_before, pad_after, s, 1, false)
+        WindowDims(osz[i], d, pad_before, pad_after, s, 1, true)
     end
     convdims = ConvDimNums(
         # N.B. The input and output dimensions are exchanged here from the
@@ -270,7 +269,6 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
     @assert size(r) == size(kernel)
     r
 end
-
 
 function make_pooling_windows(x, k, pad, stride)
     k_, pad_, stride_ = NNlib.padtuple(x, k),

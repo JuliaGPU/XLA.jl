@@ -3,6 +3,16 @@ function current_device(sess)
     isempty(dvs) ? nothing : dvs[end]
 end
 
+function run_external_optimizer(snp)
+    p = open(`/home/keno/tensorflow/bazel-bin/tensorflow/compiler/xla/tools/external_optimizer`; read=true, write=true)
+    buf = IOBuffer()
+    writeproto(buf, snp)
+    write(p, take!(buf))
+    close(p.in)
+    buf = IOBuffer(read(p))
+    readproto(buf, HloSnapshot())
+end
+
 mutable struct XRTCompilation
     sess
     device::Union{Nothing, TensorFlow.Device}
@@ -14,6 +24,9 @@ mutable struct XRTCompilation
     global compile
     function compile(sess, comp::XLAComputation, rt::Type)
         buf = IOBuffer()
+        # Enable this to proxy through an external XLA optimizer, to
+        # try out optimizations before they're deployed to TPUs.
+        #comp.hlo_snapshot = run_external_optimizer(comp.hlo_snapshot)
         writeproto(buf, comp)
         local alloc
         op = as_default(sess.graph) do
