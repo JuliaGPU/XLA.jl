@@ -19,20 +19,6 @@ xrtic = xrt(ic)
 
 # Note: Most of this boiler plate will go away. Also we'll have better handling
 # of sclaras so the loop below will look prettier. For now, just something that works.
-function on_device_preprocessing(x)
-    # Convert from UInt8 to Float32 by performing channel normalization
-    x = convert(XRTArray{Float32}, x) # Temporary restriction
-    μ = reshape(
-            vcat(XRTArray(0.485f0), XRTArray(0.456f0), XRTArray(0.406f0)),
-            (1, 1, 3, 1)).*XRTArray(255f0)
-    σ = reshape(
-            vcat(XRTArray(0.229f0), XRTArray(0.224f0), XRTArray(0.225f0)),
-            (1, 1, 3, 1)).*XRTArray(255f0)
-    let x=x
-        return (x .- μ)./σ
-    end
-end
-
 function my_derivative_with_loss(f, args...)
   y, back = Zygote._forward(Zygote.Context{Nothing}(nothing), f, args...)
   J = Δ -> Zygote.tailmemaybe(back(Δ))
@@ -79,11 +65,10 @@ end
 function epoch_loop(::Val{batch_size}, xrtic, nbatches, η) where {batch_size}
     while nbatches > XRTArray(0)
         # N.B: Ideally we'd have the labels be UInt16, but that doesn't work yet on TPUs
-        (x, labels), _ = XLA.HloInfeed(Tuple{XRTArray{UInt8, (224, 224, 3, batch_size), 4},
+        (x, labels), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224, 224, 3, batch_size), 4},
                                         XRTArray{UInt32, (batch_size,), 1}})(XLA.HloAfterAll()())
-        loss, updates = let x = on_device_preprocessing(x), y=make_one_hot(labels)
-            my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
-        end
+        y = make_one_hot(labels)
+        loss, updates = my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
         xrtic = update_params(xrtic, updates, η)
         XLA.HloOutfeed()((loss,), XLA.HloAfterAll()())
         nbatches -= XRTArray(1)
@@ -97,7 +82,7 @@ compld = @tpu_compile epoch_loop(Val(20), xrtic, XRTArray(1), XRTArray(0.1f0))
 
 ic_alloc = XRTRemoteStruct(sess, xrtic)
 
-nbatches = 250
+nbatches = 25
 GC.gc()
 t = @async XLA.run_async(compld, ic_alloc,
     XRTArray(nbatches), XRTArray(0.1f0))
