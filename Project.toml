@@ -24,3 +24,9 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 TensorFlow = "1d978283-2c37-5f34-9a8e-e9c0ece82495"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
