@@ -56,7 +56,7 @@ end
 function Base.close(c::XRTCompilation)
     f() = as_default(c.sess.graph) do
         try
-            run(c.sess, TensorFlow.Ops.release_compilation_handle(c.h))
+            run(c.sess, TensorFlow.Ops.xrt_release_compilation_handle(c.h))
         catch err
             # This runs as a finalizer. The error gets printed using the
             # C printer rather than the julia one. Transform the error

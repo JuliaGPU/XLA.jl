@@ -73,9 +73,6 @@ fill_fields!(proto::HloInstructionProto, s::HloSlice) = proto.slice_dimensions =
 struct HloMap{T} <: HloOp{:map}
 end
 fill_fields!(proto::HloInstructionProto, s::HloMap) = nothing
-@noinline function (m::HloMap{fT})(f::fT, args::XRTArray...) where {fT}
-    XRTArray(map(f, map(x->convert(Array, x), args)...))::typeof(args[1])
-end
 
 struct WindowDims
     size::Int64
