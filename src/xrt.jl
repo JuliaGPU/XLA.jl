@@ -54,6 +54,11 @@ function Base.setproperty!(c::XRTCompilation, args...)
 end
 
 function Base.close(c::XRTCompilation)
+    if c.sess.ptr == C_NULL
+        # The session was closed so our resources are already freed
+        Core.setfield!(c, :h, -1)
+        return
+    end
     f() = as_default(c.sess.graph) do
         try
             run(c.sess, TensorFlow.Ops.xrt_release_compilation_handle(c.h))
@@ -159,6 +164,11 @@ end
 const tf = TensorFlow
 global counter = 0
 function Base.close(c::XRTAllocation)
+     if c.sess.ptr == C_NULL
+        # The session was closed so our resources are already freed
+        Core.setfield!(c, :h, -1)
+        return
+    end
     #ccall(:jl_, Cvoid, (Any,), "Start Releasing allocation $(c.h)")
     global counter
     counter += 1
