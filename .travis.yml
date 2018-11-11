@@ -2,32 +2,17 @@
 language: julia
 os:
   - linux
-  - osx
 julia:
-  - 0.6
   - nightly
 notifications:
   email: false
 git:
   depth: 99999999
 
-## uncomment the following lines to allow failures on nightly julia
-## (tests will run but not make your overall status red)
-#matrix:
-#  allow_failures:
-#  - julia: nightly
+before_script:
+  # Grab our custom version of julia
+  - curl -A "$CURL_USER_AGENT" -s -L --retry 7 https://storage.googleapis.com/julia-tpu-binaries/julia.v1.1.0-kf.tpu3.x86_64-linux-gnu.tar.gz | tar -C ~/julia -x -z -f -
 
-## uncomment and modify the following lines to manually install system packages
-#addons:
-#  apt: # apt-get for linux
-#    packages:
-#    - gfortran
-#before_script: # homebrew for mac
-#  - if [ $TRAVIS_OS_NAME = osx ]; then brew install gcc; fi
-
-## uncomment the following lines to override the default test script
-#script:
-#  - julia -e 'Pkg.clone(pwd()); Pkg.build("XLA"); Pkg.test("XLA"; coverage=true)'
 after_success:
   # push coverage results to Coveralls
   - julia -e 'cd(Pkg.dir("XLA")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(Coveralls.process_folder())'
