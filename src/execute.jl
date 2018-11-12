@@ -111,3 +111,8 @@ end
 @noinline function (m::HloMap{fT})(f::fT, args::XRTArray...) where {fT}
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), map(typeof, args)...)
 end
+
+@noinline function (m::HloCrossReplicaSum)(f, args::AnyXLA...)
+    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), map(typeof, args)...)
+end
+

@@ -151,7 +151,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 pushfirst!(computations, comp′)
                 _compile_to_xla!(computations, comp′, ir′, sv′)
                 proto.called_computation_ids = [comp′.id]
-            elseif isa(hlo_inst, HloScatter)
+            elseif isa(hlo_inst, Union{HloScatter, HloCrossReplicaSum})
                 args = map(hlo_eval, stmt.args[4:end])
                 proto = HloInstructionProto(comp, hlo_inst, args...)
                 sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[4], ir, sparams)), (), 0} for i = 1:2)...}
@@ -189,7 +189,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                     _compile_to_xla!(computations, comp′, ir′, sv′)
                     push!(proto.called_computation_ids, comp′.id)
                 end
-                # Compiler Scatter function
+                # Compile Scatter function
                 let
                     scatter_sig = Tuple{typeof(hlo_inst).parameters[2], (XRTArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
                     scatter_argvals = process_function_argument(nothing, scatter_sig, 2, ir, stmt, sparams)
@@ -306,6 +306,8 @@ function _compile_to_xla!(computations, comp, ir, sv)
     xla_args
 end
 
+const ComputationDevice = DeviceAssignment_ComputationDevice
+const DeviceMeshCoordinates = DeviceAssignment_ComputationDevice_DeviceMeshCoordinates
 function compile_to_xla(ir, sv)
     # TODO: Since all HLO operations are essentially effect free, we could just have
     # a compilation result that throws this error.

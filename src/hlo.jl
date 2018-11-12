@@ -297,6 +297,22 @@ function fill_fields!(proto::HloInstructionProto, r::HloPad)
     proto.padding_config = PaddingConfig(dimensions=[convert(PaddingConfigDimension, p) for p in r.padding])
 end
 
+struct RepGroup{N}
+    replica_ids::NTuple{N, Int64}
+end
+Base.convert(::Type{ReplicaGroup}, x::RepGroup) = ReplicaGroup(replica_ids=collect(x.replica_ids))
+
+struct HloCrossReplicaSum{fT} <: HloOp{Symbol("cross-replica-sum")}
+    replica_groups::NTuple{N, RepGroup} where N
+    all_reduce_id::Int
+    barrier::String
+end
+function fill_fields!(proto::HloInstructionProto, r::HloCrossReplicaSum)
+    proto.replica_groups = ReplicaGroup[convert(ReplicaGroup, x) for x in r.replica_groups]
+    proto.all_reduce_id = r.all_reduce_id
+    proto.cross_replica_sum_barrier = r.barrier
+end
+
 function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_id(), name=nothing)
     proto = HloInstructionProto(
         opcode=opcode,
@@ -315,7 +331,7 @@ function shape_from_operands(op::HloOp, operands...)
             element_type = xla.PrimitiveType.TUPLE,
             tuple_shapes = collect(op.shape for op in operands)
         )
-    elseif isa(op, Union{HloMap, HloReduce, HloReduceWindow, HloScatter})
+    elseif isa(op, Union{HloMap, HloReduce, HloReduceWindow, HloScatter, HloCrossReplicaSum})
         T, shape = shape_infer(op,
             typeof(op).parameters[1],
             map(operands) do op

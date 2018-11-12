@@ -1,4 +1,4 @@
-function initialize!(sess)
+function initialize_tpu!(sess)
     topo = run(sess, TensorFlow.Ops.configure_distributed_tpu())
     readproto(IOBuffer(topo), TopologyProto())
 end
