@@ -174,7 +174,6 @@ shape_infer(op::HloInfeed) = (op.infeed_shape.parameters[1],
                               op.infeed_shape.parameters[2])
 
 shape_infer(op::HloIota) = (op.result_type, op.result_shape)
-shape_infer(op::HloCrossReplicaSum, f, arg1) = (arg1.parameters[1], arg1.parameters[2])
 
 function infer_rt(op::HloOp, args::Type...)
     T, shape = shape_infer(op, args...)
@@ -184,3 +183,7 @@ end
 infer_rt(op::HloInfeed, arg::Type) = Tuple{op.infeed_shape, HloToken}
 infer_rt(op::HloAfterAll, args::Type...) = HloToken
 infer_rt(op::HloOutfeed, args::Type...) = HloToken
+
+function infer_rt(op::HloCrossReplicaSum, fT::Type, args::Type...)
+    Tuple{args...}
+end
