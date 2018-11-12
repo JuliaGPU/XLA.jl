@@ -113,6 +113,7 @@ end
 end
 
 @noinline function (m::HloCrossReplicaSum)(f, args::AnyXLA...)
-    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), map(typeof, args)...)
+    xargs = args
+    Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(args).parameters...)
 end
 

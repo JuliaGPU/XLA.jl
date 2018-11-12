@@ -153,7 +153,8 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 proto.called_computation_ids = [comp′.id]
             elseif isa(hlo_inst, Union{HloScatter, HloCrossReplicaSum})
                 args = map(hlo_eval, stmt.args[4:end])
-                proto = HloInstructionProto(comp, hlo_inst, args...)
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->widenconst(argextype(arg, ir, sparams)), stmt.args[3:end])...))
+                proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
                 sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[4], ir, sparams)), (), 0} for i = 1:2)...}
                 argvals = process_function_argument(nothing, sig, 1, ir, stmt, sparams)
                 ir′, sv′ = code_typed_xla(sig; argvals=argvals)
@@ -256,13 +257,13 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 end
             elseif isa(hlo_inst, Union{HloInfeed, HloAfterAll})
                 args = map(hlo_eval, stmt.args[3:end])
-                shape = dtype_to_shape(infer_rt(hlo_inst, map(typeof, args)...); tensorflow_order=isa(hlo_inst, HloInfeed))
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...); tensorflow_order=isa(hlo_inst, HloInfeed))
                 proto = HloInstructionProto(comp,
                     hlo_inst, args...,
                     shape = shape)
             elseif isa(hlo_inst, HloOutfeed)
                 args = map(hlo_eval, stmt.args[3:end])
-                shape = dtype_to_shape(infer_rt(hlo_inst, map(typeof, args)...))
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...))
                 proto = HloInstructionProto(comp,
                     hlo_inst, args...,
                     shape = shape)
@@ -326,9 +327,17 @@ function compile_to_xla(ir, sv)
         parameters = collect(map(dtype_to_shape, xla_args)),
         result = dtype_to_shape(rt)
     )
-
+    coordinates = vec([ DeviceMeshCoordinates(value=[x,y,core]) for (x,y,core) in Iterators.product(0:1, 0:1, 0:1) ])
+    cd = ComputationDevice(
+        replica_devices = coordinates
+    )
+    da = DeviceAssignment(
+        computation_devices = [cd]
+    )
     config = XLAComputationConfig(
-        program_shape = pshape
+        program_shape = pshape,
+        device_assignment = da,
+        num_replicas = length(coordinates)
     )
     hlo_module = HloModuleProto(
         name = "test",
