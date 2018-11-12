@@ -10,6 +10,13 @@ try
     @test isa(begin
         run(@tpu_compile f())
     end, XRTArray)
+
+    # Bringing back allocations
+    f(a, b) = (a, b)
+    A, B = XRTArray(sess, rand(Float32, 10, 10)), XRTArray(sess, rand(Float32, 10, 10))
+    result = run((@tpu_compile f(A, B)), A, B)
+    @test isa(result, XLA.XRTRemoteStruct)
+    @test isa(fetch(result), Tuple{XRTArray{Float32, (10, 10), 2}, XRTArray{Float32, (10, 10), 2}})
 finally
     GC.gc() # Try running finalizers, before the process exits
     close(sess)

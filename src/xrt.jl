@@ -387,7 +387,7 @@ function literal_to_struct(T::Type, x::LiteralProto)
             push!(reconstructed_fields, fT.instance)
         end
     end
-    eval(Expr(:new, reconstructed_fields...))
+    eval(Expr(:new, T, reconstructed_fields...))
 end
 
 function XRTRemoteStruct{T}(sess::Session, x::T) where {T}
@@ -399,3 +399,5 @@ function Base.convert(::Type{T}, strct::XRTRemoteStruct{T}) where {T}
     proto = read_literal(strct.storage)
     literal_to_struct(T, proto)
 end
+
+Base.fetch(strct::XRTRemoteStruct{T}) where {T} = convert(T, strct)
