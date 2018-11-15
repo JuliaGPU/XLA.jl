@@ -16,7 +16,7 @@ maxsteps = 5
 
 # Please excuse some of the messiness with manually wrapping
 # the scalars below. That's be taken care of shortly.
-function test(A, initvec, ::Val{maxsteps}) where {maxsteps}
+function tsvd(A, initvec, ::Val{maxsteps}) where {maxsteps}
     m, n = size(A)
 
     # Initialize
@@ -54,14 +54,6 @@ function test(A, initvec, ::Val{maxsteps}) where {maxsteps}
 
         α  = norm(v)
 
-        # This is here for exercising the compiler only
-        # It's not part of the real code in TSVD.jl
-        if convert(Bool, α <= XRTArray(0.5f0))
-            v = A*v
-        else
-            v = A'v
-        end
-
         v /= α
         αs = setindex(αs, α, j)
         V  = setindex(V, v, j)
@@ -84,4 +76,5 @@ function test(A, initvec, ::Val{maxsteps}) where {maxsteps}
     end
     return αs, βs, U, V
 end
-@tpu_compile test(A, initvec, Val(5))
+
+@tpu_compile tsvd(A, initvec, Val(5))
