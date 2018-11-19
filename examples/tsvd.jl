@@ -30,22 +30,22 @@ function tsvd(A, initvec, ::Val{maxsteps}) where {maxsteps}
     v /= nrmInit
     α  = norm(v)
     v /= α
-    V  = setindex(V, v, 1)
-    αs = setindex(αs, α, 1)
+    V  = setindex(V, v, 0)
+    αs = setindex(αs, α, 0)
 
     uOld = initvec/nrmInit
     u  = A*v - α*uOld
     β  = norm(u)
     u /= β
-    U  = setindex(U, uOld, 1)
-    U  = setindex(U, u, 2)
-    βs = setindex(βs, β, 1)
+    U  = setindex(U, uOld, 0)
+    U  = setindex(U, u, 0)
+    βs = setindex(βs, β, 0)
 
-    j = XRTArray(2)
-    while convert(Bool, j <= XRTArray(maxsteps))
+    j = XRTArray(1)
+    while convert(Bool, j < XRTArray(maxsteps))
         # A'u
         v = A'u - β*v
-        i = XRTArray(1)
+        i = XRTArray(0)
         while convert(Bool, i <= j - XRTArray(1))
             ## reorthogonalize
             v -= V[i]*(V[i]'v)
@@ -61,7 +61,7 @@ function tsvd(A, initvec, ::Val{maxsteps}) where {maxsteps}
         # A*v
         u  = A*v - α*u
         ## reorthogonalize
-        i = XRTArray(1)
+        i = XRTArray(0)
         while convert(Bool, i <= j)
             u -= U[i]*(U[i]'u)
             i += XRTArray(1)
