@@ -10,6 +10,30 @@ using Statistics
 include("resnet.jl")
 include("tpu_batch_norm.jl")
 
+# Model zero initialization
+zero_init(::Type{ImmutableChain{T}}) where {T} = ImmutableChain(zero_init(T))
+@Base.pure @noinline fc(T) = fieldcount(T)
+@generated function zero_init(::Type{T}) where {T<:Tuple}
+    Expr(:tuple, (:(zero_init($(fieldtype(T, i)))) for i = 1:fieldcount(T))...)
+end
+zero_init(::Type{Conv{F,A,V,Stride,Pad,Dilation}}) where {F,A,V,Stride,Pad,Dilation} =
+    Conv{F,A,V,Stride,Pad,Dilation}(zero_init(F), zero_init(A), zero_init(V))
+zero_init(T::Type{<:XRTArray}) = zero(T)
+@noinline not_defined_error(T) = error("Not defined for $T")
+function zero_init(::Type{T}) where {T}
+    isdefined(T, :instance) || not_defined_error(T)
+    T.instance
+end
+zero_init(::Type{ResidualBlock{L, S}}) where {L, S} = ResidualBlock(zero_init(L), zero_init(S))
+zero_init(::Type{ConvNorm{C, N}}) where {C, N} = ConvNorm(zero_init(C), zero_init(N))
+zero_init(::Type{Dense{F, S, T}}) where {F, S, T} = Dense(zero_init(S), zero_init(T), zero_init(F))
+
+zero_init(::Type{TPUBatchNorm{F,V,W}}) where {F,V,W} = TPUBatchNorm(
+    zero_init(F), zero_init(V), zero_init(V),
+    zero_init(W), zero_init(W),
+    zero(XRTArray{Float32, (), 0}),
+    zero(XRTArray{Float32, (), 0}))
+
 map_to_tpu(x::Bool) = x
 map_to_tpu(x::Real) = XRTArray(convert(Float32, x))
 map_to_tpu(x::Chain) = ImmutableChain(map(map_to_tpu, x.layers)...)
@@ -132,13 +156,18 @@ function make_one_hot(data)
         )
 end
 
-function epoch_loop(::Val{batch_size}, xrtic, nbatches, η) where {batch_size}
+function epoch_loop(::Val{batch_size}, ::Type{xrticT}) where {batch_size, xrticT}
+    nbatches = XRTArray(2000)
+    η = XRTArray(0.1f0)
+    xrtic = zero_init(xrticT)
     while nbatches > XRTArray(0)
         # N.B: Ideally we'd have the labels be UInt16, but that doesn't work yet on TPUs
-        (x, labels), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224, 224, 3, batch_size), 4},
+        (x, labels), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224*224*3*batch_size,), 1},
                                         XRTArray{UInt32, (batch_size,), 1}})(XLA.HloAfterAll()())
-        y = make_one_hot(labels)
-        loss, updates = my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
+        loss, updates = let x = reshape(x, (224, 224, 3, batch_size)),
+                            y = make_one_hot(labels)
+            my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
+        end
         updates = unflatten_tuple(updates,
             XLA.HloCrossReplicaSum{typeof(+)}((), 0, "")(+, flatten_tuple(updates)...))
         xrtic = update_params(xrtic, updates, η)
@@ -149,12 +178,12 @@ function epoch_loop(::Val{batch_size}, xrtic, nbatches, η) where {batch_size}
 end
 
 sess = Session(Graph(); target="grpc://localhost:8470")
+XLA.initialize_tpu!(sess)
 
 batch_size = 128
 nbatches = 10_000
-compld = @tpu_compile epoch_loop(Val(batch_size), resnet, XRTArray(nbatches), XRTArray(0.1f0))
 
-
+#=
 models = Any[]
 for i = 0:7
     with_device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)") do
@@ -162,6 +191,9 @@ for i = 0:7
         push!(models, ic_alloc)
     end
 end
+=#
+
+compld = @tpu_compile epoch_loop(Val(batch_size), typeof(resnet)) #, XRTArray(nbatches), XRTArray(0.1f0))
 
 using ProtoBuf
 all_ops = Any[]
@@ -169,7 +201,7 @@ all_allocs = Any[]
 feed = Dict()
 for i = 0:7
     with_device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)") do
-        ic_alloc = models[i+1]
+        #ic_alloc = models[i+1]
         global compld
         config=XLA.XRTExecutionConfig(device_ordinal=i)
         iob = PipeBuffer();
@@ -177,23 +209,28 @@ for i = 0:7
         str = String(take!(iob))
         pc = placeholder(String)
         feed[pc] = str
-        params = (XRTArray(nbatches), XRTArray(0.1f0))
-        append!(all_allocs, params)
+        #params = (XRTArray(nbatches), XRTArray(0.1f0))
+        #append!(all_allocs, params)
         push!(all_ops, TensorFlow.Ops.xrt_execute(compld.h, pc, Int64[
-            XLA.gethandle!(sess, ic_alloc).h,
-            XLA.gethandle!(sess, params[1]).h,
-            XLA.gethandle!(sess, params[2]).h
+            #XLA.gethandle!(sess, ic_alloc).h,
+            #XLA.gethandle!(sess, params[1]).h,
+            #XLA.gethandle!(sess, params[2]).h
         ]))
     end
 end
+
+@info "About to start"
+sleep(5)
 t = @async run(sess, all_ops, feed; async=true)
+
+inputs = [TensorFlow.Ops.zeros(Tensor{Float32}, (224*224*3*batch_size,)),
+          TensorFlow.Ops.zeros(Tensor{UInt32}, (batch_size,))]
 
 let infeed_ops = map(0:7) do i
         with_device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)") do
             XLA._make_infeed_op(sess,
-                (Float32, UInt32), ((224, 224, 3, batch_size), (1000, batch_size)),
-                [TensorFlow.Ops.zeros(Tensor{Float32}, (224, 224, 3, batch_size)),
-                 TensorFlow.Ops.zeros(Tensor{UInt32}, (1000, batch_size))];
+                (Float32, UInt32), ((224*224*3*batch_size,), (batch_size,)),
+                inputs;
                 device = TensorFlow.Device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)"),
                 device_ordinal = i)
         end
@@ -212,7 +249,7 @@ let infeed_ops = map(0:7) do i
         run(sess, infeed_ops; async=true)
     end
     function outfeed_losses()
-        run(sess, outfeed_ops)
+        run(sess, outfeed_ops; async=true)
     end
 end
 

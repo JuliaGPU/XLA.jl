@@ -10,14 +10,14 @@ struct TPUBatchNorm{F,V,W}
    σ::W  # moving std
    ϵ::XRTArray{Float32, (), 0}
    momentum::XRTArray{Float32, (), 0}
-   active::Bool
+   #active::Bool
 end
 
 Flux.children(BN::TPUBatchNorm) =
   (BN.λ, BN.β, BN.γ, BN.μ, BN.σ, BN.ϵ, BN.momentum, BN.active)
 
 Flux.mapchildren(f, BN::TPUBatchNorm) =  # e.g. mapchildren(cu, BN)
-  TPUBatchNorm(BN.λ, f(BN.β), f(BN.γ), f(BN.μ), f(BN.σ), BN.ϵ, BN.momentum, BN.active)
+  TPUBatchNorm(BN.λ, f(BN.β), f(BN.γ), f(BN.μ), f(BN.σ), BN.ϵ, BN.momentum #=, BN.active=#)
 
 function compute_affine_shape(x)
   dims = length(size(x))
@@ -37,7 +37,7 @@ end
 # This is a bit of a trick. We use Zygote's backward pass infrastructure
 # to backpropagate the batchnorm statistics to the parameter update
 function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ε, x)
-  @assert !BN.active
+  #@assert !BN.active
   affine_shape = compute_affine_shape(x)
   μ = reshape(BN.μ, affine_shape...)
   σ = reshape(BN.σ, affine_shape...)
@@ -67,7 +67,7 @@ function (BN::TPUBatchNorm)(x)
   β = BN.β
   affine_shape = compute_affine_shape(x)
 
-  tup = batchnorm_statistics(BN.active, BN.μ, BN.σ, BN.ϵ, x)
+  tup = batchnorm_statistics(true, BN.μ, BN.σ, BN.ϵ, x)
   μ = first(tup)
   σ = first(Base.tail(tup))
 
@@ -84,8 +84,8 @@ function update_params(BN::TPUBatchNorm{F,V,W}, updates, η) where {F,V,W}
       update_params(BN.γ, updates.γ, η),
       (XRTArray(1f0) - mtm) .* BN.μ + mtm .* updates.μ,
       (XRTArray(1f0) - mtm) .* BN.σ + mtm .* updates.σ,
-      BN.ϵ, mtm, BN.active
+      BN.ϵ, mtm #, BN.active
     )
 end
 
-map_to_tpu(x::Flux.BatchNorm) = TPUBatchNorm(map(map_to_tpu, Flux.children(x))...)
+map_to_tpu(x::Flux.BatchNorm) = TPUBatchNorm(map(map_to_tpu, Flux.children(x))[1:end-1]...)
