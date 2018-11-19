@@ -74,7 +74,7 @@ function tsvd(A, initvec, ::Val{maxsteps}) where {maxsteps}
 
         j += XRTArray(1)
     end
-    return αs, βs, U, V
+    return αs, βs
 end
 
 @tpu_compile tsvd(A, initvec, Val(5))
