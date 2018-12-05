@@ -1,5 +1,6 @@
 struct TPUSession
     sess::TensorFlow.Session
+    job_name::String
     tpu_devices::Vector{DeviceIndex}
     topology::TopologyProto
 end
@@ -12,11 +13,13 @@ Base.run(sess::TPUSession, args...; kwargs...) = Base.run(tf_session(sess), args
 const tf = TensorFlow
 function TPUSession(grpc_endpoints::Vector{String})
     if length(grpc_endpoints) == 1
+        job_name = "tpu_worker"
         sess = Session(Graph(); target="grpc://$(grpc_endpoints[1])")
     else
+        job_name = "tpu_job"
         job = tf.tensorflow.JobDef(
-            name = "tpu_worker",
-            tasks = Dict(pairs(grpc_endpoints)))
+            name = job_name,
+            tasks = Dict(x[1]-1=>x[2] for x in pairs(grpc_endpoints)))
 
         cluster = tf.tensorflow.ClusterDef(job=[job])
 
@@ -34,30 +37,32 @@ function TPUSession(grpc_endpoints::Vector{String})
         end
     end
     topology = initialize_tpu!(sess)
-    TPUSession(sess, tpu_devices, topology)
+    TPUSession(sess, job_name, tpu_devices, topology)
 end
 TPUSession(endpoint::String) = TPUSession([endpoint])
 
 all_tpu_devices(sess::TPUSession) = sess.tpu_devices
 
 function make_xrt_execute_on(device::DeviceIndex, com::XRTCompilation, inputs...)
-    make_run_op(com, inputs...; device=tf_tpu_device(device))
+    make_run_op(com, inputs...; device=tf_tpu_device(com.sess, device))
 end
 
 function make_infeed_on(sess, device::DeviceIndex, args...)
     _make_infeed_op(sess,
         args...;
-        device = tf_host_cpu_device(device),
+        device = tf_host_cpu_device(sess, device),
         device_ordinal = device.index)
 end
 
 function make_outfeed_on(sess, device::DeviceIndex, args...)
     make_outfeed_op(sess,
         args...;
-        device = tf_host_cpu_device(device),
+        device = tf_host_cpu_device(sess, device),
         device_ordinal = device.index)
 end
 
 tf_session(sess) = sess
 tf_session(sess::TPUSession) = sess.sess
 tf_graph(sess) = tf_session(sess).graph
+
+job_name(sess::TPUSession) = sess.job_name

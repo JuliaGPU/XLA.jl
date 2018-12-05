@@ -41,11 +41,12 @@ function Base.getindex(topo::TopologyProto, idxs::Vector{DeviceIndex})
     [MeshIndex(coords[idx.task+1, idx.index+1, :]...) for idx in idxs]
 end
 
+job_name(sess) = "tpu_worker"
 
-function tf_tpu_device(device::DeviceIndex)
-    TensorFlow.Device("/job:tpu_worker/replica:1/task:$(device.task+1)/device:TPU:$(device.index+1)")
+function tf_tpu_device(sess, device::DeviceIndex)
+    TensorFlow.Device("/job:$(job_name(sess))/replica:1/task:$(device.task+1)/device:TPU:$(device.index+1)")
 end
 
-function tf_host_cpu_device(device::DeviceIndex)
-    TensorFlow.Device("/job:tpu_worker/replica:1/task:$(device.task+1)/device:CPU:1")
+function tf_host_cpu_device(sess, device::DeviceIndex)
+    TensorFlow.Device("/job:$(job_name(sess))/replica:1/task:$(device.task+1)/device:CPU:1")
 end

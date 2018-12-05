@@ -168,8 +168,8 @@ function epoch_loop(::Val{batch_size}, ::Type{xrticT}) where {batch_size, xrticT
                             y = make_one_hot(labels)
             my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
         end
-        #updates = unflatten_tuple(updates,
-        #    XLA.HloCrossReplicaSum{typeof(+)}((), 0, "")(+, flatten_tuple(updates)...))
+        updates = unflatten_tuple(updates,
+            XLA.HloCrossReplicaSum{typeof(+)}((), 0, "")(+, flatten_tuple(updates)...))
         xrtic = update_params(xrtic, updates, η)
         XLA.HloOutfeed()((loss,), XLA.HloAfterAll()())
         nbatches -= XRTArray(1)
