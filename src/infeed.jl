@@ -1,6 +1,6 @@
 const tf = TensorFlow
 function _make_infeed_op(sess, eltypes, sizes, inputs; device=nothing, device_ordinal=0)
-    desc = tf.NodeDescription(sess.graph, "InfeedEnqueueTuple", tf.get_name("InfeedEnqueueTuple"))
+    desc = tf.NodeDescription(tf_graph(sess), "InfeedEnqueueTuple", tf.get_name("InfeedEnqueueTuple"))
     tf.set_attr_shape_list(desc, "shapes", Vector{Int64}[collect(x) for x in sizes])
     tf.set_attr_list(desc, "dtypes", DataType[eltypes...])
     desc["device_ordinal"] = device_ordinal
@@ -18,7 +18,7 @@ function make_infeed_op(sess, tup::NTuple{N, AbstractArray} where N; device_ordi
     eq, feeds
 end
 function make_outfeed_op(sess, tup::Type{<:NTuple}; device=nothing, device_ordinal=0)
-    desc = tf.NodeDescription(sess.graph, "OutfeedDequeueTuple", tf.get_name("OutfeedDequeueTuple"))
+    desc = tf.NodeDescription(tf_graph(sess), "OutfeedDequeueTuple", tf.get_name("OutfeedDequeueTuple"))
     tf.set_attr_shape_list(desc, "shapes", Vector{Int64}[collect(size(x)) for x in tup.parameters])
     tf.set_attr_list(desc, "dtypes", DataType[eltype(x) for x in tup.parameters])
     desc["device_ordinal"] = device_ordinal

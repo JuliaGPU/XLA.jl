@@ -1,7 +1,7 @@
 const tf = TensorFlow
 
 function current_device(sess)
-    dvs = sess.graph.op_context.devices
+    dvs = tf_graph(sess).op_context.devices
     isempty(dvs) ? nothing : dvs[end]
 end
 
@@ -40,15 +40,19 @@ mutable struct XRTCompilation
         # try out optimizations before they're deployed to TPUs.
         #comp.hlo_snapshot = run_external_optimizer(comp.hlo_snapshot)
         writeproto(buf, comp)
-        op, alloc = make_xrt_compile(sess.graph)
+        op, alloc = make_xrt_compile(tf_graph(sess))
         res = new(sess,
             current_device(sess),
             comp.hlo_snapshot.hlo.hlo_module.host_program_shape, rt,
-            run(sess, op, Dict(alloc => String(take!(buf)))))
+            run(tf_session(sess), op, Dict(alloc => String(take!(buf)))))
         finalizer(close, res)
         res
     end
 end
+function Base.show(io::IO, comp::XRTCompilation)
+    print(io, "XRTCompilation handle")
+end
+
 function Base.setproperty!(c::XRTCompilation, args...)
     error("XRTCompilation may not be modified")
 end
@@ -59,9 +63,9 @@ function Base.close(c::XRTCompilation)
         Core.setfield!(c, :h, -1)
         return
     end
-    f() = as_default(c.sess.graph) do
+    f() = as_default(tf_graph(c.sess)) do
         try
-            run(c.sess, TensorFlow.Ops.xrt_release_compilation_handle(c.h))
+            run(tf_session(c.sess), TensorFlow.Ops.xrt_release_compilation_handle(c.h))
         catch err
             # This runs as a finalizer. The error gets printed using the
             # C printer rather than the julia one. Transform the error
@@ -76,6 +80,20 @@ function Base.close(c::XRTCompilation)
         with_device(f, c.device)
     end
     Core.setfield!(c, :h, -1)
+end
+
+function make_run_op(com::XRTCompilation, inputs...; device=com.device, config=XRTExecutionConfig())
+    iob = PipeBuffer();
+    writeproto(iob, config)
+    str = String(take!(iob))
+    op = as_default(tf_graph(com.sess)) do
+        handles = map(x->gethandle!(com.sess, x), inputs)
+        # Make sure everything is on the same device
+        @assert all(input->input.device == device, handles)
+        str = TensorFlow.constant(str)
+        _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, handles)))
+        return device === nothing ? _op() : with_device(_op, device)
+    end
 end
 
 mutable struct XRTAllocation
@@ -102,18 +120,6 @@ mutable struct XRTAllocation
     end
     global run
     global _run
-    function make_run_op(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
-        iob = PipeBuffer();
-        writeproto(iob, config)
-        str = String(take!(iob))
-        op = as_default(com.sess.graph) do
-            handles = map(x->gethandle!(com.sess, x), inputs)
-            # Make sure everything is on the same device
-            @assert all(input->input.device == com.device, handles)
-            _op() = TensorFlow.Ops.xrt_execute(com.h, str, collect(map(x->x.h, handles)))
-            return com.device === nothing ? _op() : with_device(_op, com.device)
-        end
-    end
 
     function _run(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
         op = make_run_op(com, inputs...; config=config)

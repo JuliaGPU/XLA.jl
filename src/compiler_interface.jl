@@ -83,12 +83,30 @@ macro tpu_dump_file(file, expr)
     end
 end
 
-macro tpu_compile(expr)
+make_options(sess::Session) = nothing
+function make_options(sess::TPUSession; devices=nothing)
+    devices === nothing ? nothing : sess.topology[devices]
+end
+
+macro tpu_compile(args...)
+    expr = args[end] # The expression to compile
+    kwargs = Expr[]
+    for i in 1:length(args)-1
+        x = args[i]
+        if x isa Expr && x.head == :(=) # Keyword given of the form "foo=bar"
+            push!(kwargs, x)
+        else
+            return Expr(:call, :error, "@tpu_compile expects only one non-keyword argument")
+        end
+    end
+    opts = Expr(:call, make_options, esc(:sess),
+            (Expr(:kw, esc(kw.args[1]), esc(kw.args[2])) for kw in kwargs)...)
     @assert isexpr(expr, :call)
     quote
         let f = $(esc(expr.args[1]))
             ir, sv = code_typed_xla(f, Base.typesof($(map(esc, expr.args[2:end])...)))
-            compld = XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv)...)
+            replica_device_coords = $opts
+            compld = XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv; replica_device_coords=replica_device_coords)...)
             compld
         end
     end

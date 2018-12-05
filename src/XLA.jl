@@ -14,6 +14,8 @@ module XLA
 
     include("literal.jl")
     include("xrt.jl")
+    include("topology.jl")
+    include("multicore.jl")
     include("hlo.jl")
     include("shape_infer.jl")
     include("execute.jl")
@@ -25,7 +27,6 @@ module XLA
     include("compiler_interface.jl")
     include("utils.jl")
     include("grad.jl")
-    include("topology.jl")
     include("infeed.jl")
 
     function regen_proto()
@@ -38,6 +39,10 @@ module XLA
     end
 
     export XRTArray, GenericHloOp, HloConstant, HloDot, HloSlice, ImmutableChain, XRTAllocation, XRTRemoteStruct
+
+    # TPU Sessions/devices
+    export TPUSession, all_tpu_devices
+
     export @tpu_compile, @tpu_dump, @tpu
 
     function __init__()

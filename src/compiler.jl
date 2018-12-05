@@ -309,7 +309,7 @@ end
 
 const ComputationDevice = DeviceAssignment_ComputationDevice
 const DeviceMeshCoordinates = DeviceAssignment_ComputationDevice_DeviceMeshCoordinates
-function compile_to_xla(ir, sv)
+function compile_to_xla(ir, sv; replica_device_coords = nothing)
     # TODO: Since all HLO operations are essentially effect free, we could just have
     # a compilation result that throws this error.
     @check_ir isa(ir.stmts[end], ReturnNode) && isdefined(ir.stmts[end], :val) analyze_unreachable
@@ -327,18 +327,24 @@ function compile_to_xla(ir, sv)
         parameters = collect(map(dtype_to_shape, xla_args)),
         result = dtype_to_shape(rt)
     )
-    coordinates = vec([ DeviceMeshCoordinates(value=[x,y,core]) for (x,y,core) in Iterators.product(0:1, 0:1, 0:1) ])
-    cd = ComputationDevice(
-        replica_devices = coordinates
-    )
-    da = DeviceAssignment(
-        computation_devices = [cd]
-    )
-    config = XLAComputationConfig(
-        program_shape = pshape,
-        device_assignment = da,
-        num_replicas = length(coordinates)
-    )
+    if replica_device_coords !== nothing
+        coordinates = vec([ DeviceMeshCoordinates(value=[dev.x, dev.y, dev.core]) for dev in replica_device_coords ])
+        cd = ComputationDevice(
+            replica_devices = coordinates
+        )
+        da = DeviceAssignment(
+            computation_devices = [cd]
+        )
+        config = XLAComputationConfig(
+            program_shape = pshape,
+            device_assignment = da,
+            num_replicas = length(coordinates)
+        )
+    else
+        config = XLAComputationConfig(
+            program_shape = pshape
+        )
+    end
     hlo_module = HloModuleProto(
         name = "test",
         computations = computations,
