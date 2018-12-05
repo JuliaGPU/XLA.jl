@@ -162,14 +162,14 @@ function epoch_loop(::Val{batch_size}, ::Type{xrticT}) where {batch_size, xrticT
     xrtic = zero_init(xrticT)
     while nbatches > XRTArray(0)
         # N.B: Ideally we'd have the labels be UInt16, but that doesn't work yet on TPUs
-        (x, labels), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224*224*3*batch_size,), 1},
-                                        XRTArray{UInt32, (batch_size,), 1}})(XLA.HloAfterAll()())
+        (x,), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224*224*3*batch_size,), 1}})(XLA.HloAfterAll()())
+        labels = zero(XRTArray{Int32, (batch_size,), 1})
         loss, updates = let x = reshape(x, (224, 224, 3, batch_size)),
                             y = make_one_hot(labels)
             my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
         end
-        updates = unflatten_tuple(updates,
-            XLA.HloCrossReplicaSum{typeof(+)}((), 0, "")(+, flatten_tuple(updates)...))
+        #updates = unflatten_tuple(updates,
+        #    XLA.HloCrossReplicaSum{typeof(+)}((), 0, "")(+, flatten_tuple(updates)...))
         xrtic = update_params(xrtic, updates, η)
         XLA.HloOutfeed()((loss,), XLA.HloAfterAll()())
         nbatches -= XRTArray(1)
@@ -220,25 +220,23 @@ for i = 0:7
 end
 
 @info "About to start"
-sleep(5)
-t = @async run(sess, all_ops, feed; async=true)
 
-inputs = [TensorFlow.Ops.zeros(Tensor{Float32}, (224*224*3*batch_size,)),
-          TensorFlow.Ops.zeros(Tensor{UInt32}, (batch_size,))]
+inputs = [TensorFlow.Ops.zeros(Tensor{Float32}, (224*224*3*batch_size,))]#,
+          #TensorFlow.Ops.zeros(Tensor{Int32}, (batch_size,))]
 
 let infeed_ops = map(0:7) do i
-        with_device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)") do
+        with_device("/job:tpu_worker/replica:1/task:1/device:CPU:1") do
             XLA._make_infeed_op(sess,
-                (Float32, UInt32), ((224*224*3*batch_size,), (batch_size,)),
+                (Float32, #=, Int32=#), ((224*224*3*batch_size,), #= (batch_size,) =#),
                 inputs;
-                device = TensorFlow.Device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)"),
+                device = TensorFlow.Device("/job:tpu_worker/replica:1/task:1/device:CPU:1"),
                 device_ordinal = i)
         end
     end, outfeed_ops = map(0:7) do i
-        with_device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)") do
+        with_device("/job:tpu_worker/replica:1/task:1/device:CPU:1") do
             XLA.make_outfeed_op(sess,
                 Tuple{XRTArray{Float32, (), 0}};
-                device = TensorFlow.Device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)"),
+                device = TensorFlow.Device("/job:tpu_worker/replica:1/task:1/device:CPU:1"),
                 device_ordinal = i)
         end
     end
@@ -252,6 +250,8 @@ let infeed_ops = map(0:7) do i
         run(sess, outfeed_ops; async=true)
     end
 end
+
+t = @async run(sess, all_ops, feed; async=true)
 
 for i = 1:nbatches
     @info "Feeding batch $i"
