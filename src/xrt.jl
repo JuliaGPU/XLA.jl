@@ -106,7 +106,7 @@ mutable struct XRTAllocation
             device_ordinal = Int32(0),
             value = literal))
         local alloc
-        op = as_default(sess.graph) do
+        op = as_default(tf_graph(sess)) do
             alloc = placeholder(String)
             TensorFlow.Ops.xrt_allocate(alloc)
         end
@@ -237,7 +237,7 @@ end
 
 function read_literal(rs::XRTAllocation)
     sess, dev, h = rs.sess, rs.device, rs.h
-    op() = as_default(sess.graph) do
+    op() = as_default(tf_graph(sess)) do
         run(sess, TensorFlow.Ops.xrt_read_literal(h))::String
     end
     literal = dev === nothing ? op() : with_device(op, dev)
