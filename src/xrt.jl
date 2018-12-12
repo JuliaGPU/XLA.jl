@@ -396,10 +396,10 @@ function literal_to_struct(T::Type, x::LiteralProto)
     eval(Expr(:new, T, reconstructed_fields...))
 end
 
-function XRTRemoteStruct{T}(sess::Session, x::T) where {T}
+function XRTRemoteStruct{T}(sess, x::T) where {T}
     XRTRemoteStruct{T}(XRTAllocation(sess, struct_to_literal(x)))
 end
-XRTRemoteStruct(sess::Session, x::T) where {T} = XRTRemoteStruct{T}(sess, x)
+XRTRemoteStruct(sess, x::T) where {T} = XRTRemoteStruct{T}(sess, x)
 
 function Base.convert(::Type{T}, strct::XRTRemoteStruct{T}) where {T}
     proto = read_literal(strct.storage)
