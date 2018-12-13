@@ -104,7 +104,7 @@ mutable struct XRTAllocation
         buf = IOBuffer()
         device = current_device(sess)
         device_ordinal = 0
-        if device !== nothing && device.parts[end].kind == "TPU"
+        if device !== nothing && device.parts[end].kind[2] == "TPU"
             device_ordinal = device.parts[end].index - 1
         end
         writeproto(buf, XLAAllocation(
