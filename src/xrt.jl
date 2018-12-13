@@ -102,8 +102,13 @@ mutable struct XRTAllocation
     h::Int64
     function XRTAllocation(sess, literal::LiteralProto)
         buf = IOBuffer()
+        device = current_device(sess)
+        device_ordinal = 0
+        if device !== nothing && device.parts[end].kind == "TPU"
+            device_ordinal = device.parts[end].index - 1
+        end
         writeproto(buf, XLAAllocation(
-            device_ordinal = Int32(0),
+            device_ordinal = device_ordinal,
             value = literal))
         local alloc
         op = as_default(tf_graph(sess)) do

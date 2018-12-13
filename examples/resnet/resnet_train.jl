@@ -177,50 +177,9 @@ function epoch_loop(::Val{batch_size}, ::Type{xrticT}) where {batch_size, xrticT
     return xrtic
 end
 
-sess = TPUSession("localhost:8470")
-
 batch_size = 128
-nbatches = 2000
 
-#=
-models = Any[]
-for i = 0:7
-    with_device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)") do
-        ic_alloc = XRTRemoteStruct(sess, resnet)
-        push!(models, ic_alloc)
-    end
-end
-=#
-
-compld = @tpu_compile devices=all_tpu_devices(sess) epoch_loop(Val(batch_size), typeof(resnet)) #, XRTArray(nbatches), XRTArray(0.1f0))
-
-@info "About to start"
-
-inputs = [ TensorFlow.Ops.zeros(Tensor{Float32}, (224*224*3*batch_size,)) ]
-
-all_ops = [ XLA.make_xrt_execute_on(tpu, compld) for tpu in all_tpu_devices(sess) ]
-
-let infeed_ops = [
-        XLA.make_infeed_on(sess, tpu, (Float32,), ((224*224*3*batch_size,),), inputs) for tpu in all_tpu_devices(sess)
-    ],
-    outfeed_ops = [
-        XLA.make_outfeed_on(sess, tpu, Tuple{XRTArray{Float32, (), 0}}) for tpu in all_tpu_devices(sess)
-    ]
-    global infeed_zeros
-    global outfeed_losses
-    global sess
-    function infeed_zeros()
-        run(sess, infeed_ops; async=true)
-    end
-    function outfeed_losses()
-        run(sess, outfeed_ops; async=true)
-    end
-end
-
-t = @async run(sess, all_ops; async=true)
-
-for i = 1:nbatches
-    @info "Feeding batch $i"
-    infeed_zeros()
-    @show outfeed_losses()
-end
+(ir, sv) = @time XLA.code_typed_xla(epoch_loop, Tuple{Val{batch_size}, Type{typeof(resnet)}})
+@time XLA.compile_to_xla(ir, sv)
+(ir, sv) = @time XLA.code_typed_xla(epoch_loop, Tuple{Val{batch_size}, Type{typeof(resnet)}})
+@time XLA.compile_to_xla(ir, sv)
