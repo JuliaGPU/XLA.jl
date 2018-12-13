@@ -43,7 +43,7 @@ function process_function_argument(argvals, sig, idx, ir, stmt, sparams)
     argvals
 end
 
-function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
+function _compile_to_xla!(computations, comp, ir, sv)
     ir = outline_control_flow!(ir, sv)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
@@ -139,7 +139,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                 proto = HloInstructionProto(comp, hlo_inst, args...)
                 sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[i], ir, sparams)), (), 0} for i = 4:length(stmt.args))...}
                 argvals = process_function_argument(nothing, sig, 1, ir, stmt, sparams)
-                ir′, sv′ = code_typed_xla(sig; argvals=argvals, params=params)
+                ir′, sv′ = code_typed_xla(sig; argvals=argvals)
                 if sizeof(sig.parameters[1]) != 0
                     ir′.argtypes[1] = Const(argvals[1])
                 end
@@ -149,7 +149,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                     id = length(computations)
                 )
                 pushfirst!(computations, comp′)
-                _compile_to_xla!(computations, comp′, ir′, sv′; params=params)
+                _compile_to_xla!(computations, comp′, ir′, sv′)
                 proto.called_computation_ids = [comp′.id]
             elseif isa(hlo_inst, Union{HloScatter, HloCrossReplicaSum})
                 args = map(hlo_eval, stmt.args[4:end])
@@ -157,7 +157,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                 proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
                 sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[4], ir, sparams)), (), 0} for i = 1:2)...}
                 argvals = process_function_argument(nothing, sig, 1, ir, stmt, sparams)
-                ir′, sv′ = code_typed_xla(sig; argvals=argvals, params=params)
+                ir′, sv′ = code_typed_xla(sig; argvals=argvals)
                 if sizeof(sig.parameters[1]) != 0
                     ir′.argtypes[1] = Const(argvals[1])
                 end
@@ -167,7 +167,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                     id = length(computations)
                 )
                 pushfirst!(computations, comp′)
-                _compile_to_xla!(computations, comp′, ir′, sv′; params=params)
+                _compile_to_xla!(computations, comp′, ir′, sv′)
                 proto.called_computation_ids = [comp′.id]
             elseif isa(hlo_inst, HloSelectAndScatter)
                 args = map(hlo_eval, stmt.args[5:end])
@@ -177,7 +177,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                 let
                     select_sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
                     select_argvals = process_function_argument(nothing, select_sig, 1, ir, stmt, sparams)
-                    ir′, sv′ = code_typed_xla(select_sig; argvals=select_argvals, params=params)
+                    ir′, sv′ = code_typed_xla(select_sig; argvals=select_argvals)
                     if sizeof(select_sig.parameters[1]) != 0
                         ir′.argtypes[1] = Const(select_argvals[1])
                     end
@@ -187,14 +187,14 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                         id = length(computations)
                     )
                     pushfirst!(computations, comp′)
-                    _compile_to_xla!(computations, comp′, ir′, sv′; params=params)
+                    _compile_to_xla!(computations, comp′, ir′, sv′)
                     push!(proto.called_computation_ids, comp′.id)
                 end
                 # Compile Scatter function
                 let
                     scatter_sig = Tuple{typeof(hlo_inst).parameters[2], (XRTArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
                     scatter_argvals = process_function_argument(nothing, scatter_sig, 2, ir, stmt, sparams)
-                    ir′, sv′ = code_typed_xla(scatter_sig; argvals=scatter_argvals, params=params)
+                    ir′, sv′ = code_typed_xla(scatter_sig; argvals=scatter_argvals)
                     if sizeof(scatter_sig.parameters[1]) != 0
                         ir′.argtypes[1] = Const(scatter_argvals[1])
                     end
@@ -204,7 +204,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                         id = length(computations)
                     )
                     pushfirst!(computations, comp′)
-                    _compile_to_xla!(computations, comp′, ir′, sv′; params=params)
+                    _compile_to_xla!(computations, comp′, ir′, sv′)
                     push!(proto.called_computation_ids, comp′.id)
                 end
             elseif isa(hlo_inst, _HloIf)
@@ -228,7 +228,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                         instr.parameter_number = 0
                     end
                     pushfirst!(computations, comp′)
-                    _compile_to_xla!(computations, comp′, ir′, nothing; params=params)
+                    _compile_to_xla!(computations, comp′, ir′, nothing)
                     push!(proto.called_computation_ids, comp′.id)
                 end
             elseif isa(hlo_inst, _HloWhile)
@@ -252,7 +252,7 @@ function _compile_to_xla!(computations, comp, ir, sv; params=make_xla_params())
                         instr.parameter_number = 0
                     end
                     pushfirst!(computations, comp′)
-                    _compile_to_xla!(computations, comp′, ir′, nothing; params=params)
+                    _compile_to_xla!(computations, comp′, ir′, nothing)
                     push!(proto.called_computation_ids, comp′.id)
                 end
             elseif isa(hlo_inst, Union{HloInfeed, HloAfterAll})

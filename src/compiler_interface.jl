@@ -1,21 +1,3 @@
-function typeinf_code_cached(method::Core.Method, @nospecialize(atypes), sparams::Core.SimpleVector, run_optimizer::Bool, params::Core.Compiler.Params)
-    code = Core.Compiler.code_for_method(method, atypes, sparams, params.world)
-    code === nothing && return (nothing, Any)
-    ccall(:jl_typeinf_begin, Cvoid, ())
-    result = Core.Compiler.InferenceResult(code)
-    frame = Core.Compiler.InferenceState(result, true, params)
-    frame === nothing && return (nothing, Any)
-    if Core.Compiler.typeinf(frame) && run_optimizer
-        opt = Core.Compiler.OptimizationState(frame)
-        Core.Compiler.optimize(opt, result.result)
-        opt.src.inferred = true
-    end
-    ccall(:jl_typeinf_end, Cvoid, ())
-    frame.inferred || return (nothing, Any)
-    return (frame.src, Core.Compiler.widenconst(result.result))
-end
-
-
 function code_typed_argtys(@nospecialize(types=Tuple); optimize=true, params=nothing, constvals=nothing)
     ccall(:jl_is_in_pure_context, Bool, ()) && error("code reflection cannot be used from generated functions")
     types = Base.to_tuple_type(types)
@@ -33,17 +15,17 @@ function code_typed_argtys(@nospecialize(types=Tuple); optimize=true, params=not
                         i == 1 ? typeof(f) : types.parameters[i-1])
             end
         end
-        (code, ty) = typeinf_code_cached(meth, x[1], x[2], optimize, params, argtypes)
+        (code, ty) = Core.Compiler.typeinf_code(meth, x[1], x[2], optimize, params, argtypes)
         code === nothing && error("inference not successful") # inference disabled?
         push!(asts, code => ty)
     end
     return asts
 end
 
-make_xla_params() = Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true, ignore_all_inlining_heuristics=true)
-function code_typed_xla(f, argtypes::Type; params=make_xla_params())
+function code_typed_xla(f, argtypes::Type)
     argvals = Vector{Any}(undef, length(argtypes.parameters) + 1)
     argvals[1] = f
+    params = Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true, ignore_all_inlining_heuristics=true)
     ci = (Compiler == Core.Compiler ? Base.code_typed : NI.code_typed)(f, argtypes, argvals; params=params)[1].first
     method = which(f, argtypes)
     (metharg, methsp) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
@@ -55,20 +37,18 @@ function code_typed_xla(f, argtypes::Type; params=make_xla_params())
     run_xla_embedding_passes!(ir, sv)
 end
 
-function code_typed_xla(sig::Type; argvals=nothing, params=make_xla_params())
-    @Base.show sig
-    @time begin
-        ci = code_typed_argtys(sig; params=params, constvals=argvals)[1].first
-        methods = Base._methods_by_ftype(sig, -1, params.world)
-        method = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), sig, params.world).func
-        (metharg, methsp) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
-                                  Compiler.argtypes_to_type(Any[sig.parameters...]),
-                                  method.sig)
-        mi = Compiler.code_for_method(method, metharg, methsp, params.world);
-        sv = Compiler.OptimizationState(mi, params);
-        ir = Compiler.inflate_ir(ci, mi);
-        run_xla_embedding_passes!(ir, sv)
-    end
+function code_typed_xla(sig::Type; argvals=nothing)
+    params = Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true, ignore_all_inlining_heuristics=true)
+    ci = code_typed_argtys(sig; params=params, constvals=argvals)[1].first
+    methods = Base._methods_by_ftype(sig, -1, params.world)
+    method = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), sig, params.world).func
+    (metharg, methsp) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
+                              Compiler.argtypes_to_type(Any[sig.parameters...]),
+                              method.sig)
+    mi = Compiler.code_for_method(method, metharg, methsp, params.world);
+    sv = Compiler.OptimizationState(mi, params);
+    ir = Compiler.inflate_ir(ci, mi);
+    run_xla_embedding_passes!(ir, sv)
 end
 
 function Base.dump(c::XLAComputation)
