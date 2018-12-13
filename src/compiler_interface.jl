@@ -55,7 +55,7 @@ function Base.dump(c::XLAComputation)
    mktemp() do f, io
        writeproto(io, c.hlo_snapshot)
        close(io)
-       run(`/home/keno/tensorflow/bazel-bin/tensorflow/compiler/xla/tools/dumped_computation_to_text $f`)
+       run(`$(dirname(dirname(pathof(TensorFlow))))/deps/downloads/bin/dumped_computation_to_text $f`)
    end
    nothing
 end
