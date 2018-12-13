@@ -60,7 +60,10 @@ end
 struct HloDot <: HloOp{:dot}
     dims::DimNums
 end
-fill_fields!(proto::HloInstructionProto, d::HloDot) = proto.dot_dimension_numbers = convert(DotDimensionNumbers, d.dims)
+function fill_fields!(proto::HloInstructionProto, d::HloDot)
+    proto.dot_dimension_numbers = convert(DotDimensionNumbers, d.dims)
+    proto.precision_config = xla.PrecisionConfig(operand_precision = [2 for _ in proto.operand_ids])
+end
 
 const SliceDimensions = HloInstructionProto_SliceDimensions
 struct HloSlice <: HloOp{:slice}
@@ -127,6 +130,9 @@ function fill_fields!(proto::HloInstructionProto, d::HloConv)
     window = xla.Window(dimensions = map(xla.WindowDimension, collect(d.window)))
     proto.window = window
     proto.convolution_dimension_numbers = xla.ConvolutionDimensionNumbers(d.dims)
+
+    # Ask for increased precision
+    proto.precision_config = xla.PrecisionConfig(operand_precision = [2 for _ in proto.operand_ids])
 end
 
 struct HloReduceWindow{fT, N} <: HloOp{Symbol("reduce-window")}
@@ -362,13 +368,14 @@ function shape_from_operands(op::HloOp, operands...)
 end
 
 function HloInstructionProto(op::HloOp, @nospecialize(operands::Union{Argument, HloInstructionProto}...); id=make_id(), name="$(opcode(op))$id",
-        shape=shape_from_operands(op, operands...))
+        shape=shape_from_operands(op, operands...), kwargs...)
     proto = HloInstructionProto(
         opcode = opcode(op),
         shape = shape,
         id = id,
         name = name,
-        operand_ids = collect(map(x->x.id, operands))
+        operand_ids = collect(map(x->x.id, operands)),
+        kwargs...
     )
     fill_fields!(proto, op)
     proto
