@@ -39,8 +39,8 @@ end
 function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ε, x)
   #@assert !BN.active
   affine_shape = compute_affine_shape(x)
-  μ = reshape(BN.μ, affine_shape...)
-  σ = reshape(BN.σ, affine_shape...)
+  μ = reshape(bn_μ, affine_shape...)
+  σ = reshape(bn_σ, affine_shape...)
   (μ, σ)
 end
 
