@@ -46,3 +46,11 @@ end
 
 # This is necessary, because even XRT scalars are AbstractArrays
 Zygote.accum(a::XRTArray, b::XRTArray) = a+b
+
+onelike(x) = Int8(1)
+onelike(x::XRTArray{T}) where T = XRTArray(one(T))
+
+function grad(f, x)
+  y, back = Zygote._forward(Zygote.Context{Nothing}(nothing), f, x)
+  return back(onelike(x))[2]
+end
