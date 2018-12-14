@@ -240,6 +240,8 @@ struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
     end
 end
 
+Base.collect(xs::XRTArray) = xs.storage.localstorage
+
 function read_literal(rs::XRTAllocation)
     sess, dev, h = rs.sess, rs.device, rs.h
     op() = as_default(tf_graph(sess)) do
