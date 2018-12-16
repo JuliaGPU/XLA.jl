@@ -156,14 +156,14 @@ function make_one_hot(data)
         )
 end
 
-function epoch_loop(::Val{batch_size}, ::Type{xrticT}) where {batch_size, xrticT}
-    nbatches = XRTArray(2000)
+function epoch_loop(::Val{batch_size}, ::Val{nbs}, ::Type{xrticT}) where {batch_size, nbs, xrticT}
+    nbatches = XRTArray(nbs)
     η = XRTArray(0.1f0)
     xrtic = zero_init(xrticT)
     while nbatches > XRTArray(0)
         # N.B: Ideally we'd have the labels be UInt16, but that doesn't work yet on TPUs
-        (x,), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224*224*3*batch_size,), 1}})(XLA.HloAfterAll()())
-        labels = zero(XRTArray{Int32, (batch_size,), 1})
+        (x, labels), _ = XLA.HloInfeed(Tuple{XRTArray{Float32, (224*224*3*batch_size,), 1},
+                                             XRTArray{Int32, (batch_size,), 1}})(XLA.HloAfterAll()())
         loss, updates = let x = reshape(x, (224, 224, 3, batch_size)),
                             y = make_one_hot(labels)
             my_derivative_with_loss(xrtic->crossentropy(xrtic(x), y), xrtic)
@@ -177,31 +177,24 @@ function epoch_loop(::Val{batch_size}, ::Type{xrticT}) where {batch_size, xrticT
     return xrtic
 end
 
-sess = TPUSession("localhost:8470")
-
 batch_size = 128
-nbatches = 2000
+nbatches = 500
 
-#=
-models = Any[]
-for i = 0:7
-    with_device("/job:tpu_worker/replica:1/task:1/device:TPU:$(i+1)") do
-        ic_alloc = XRTRemoteStruct(sess, resnet)
-        push!(models, ic_alloc)
-    end
-end
-=#
-
-compld = @tpu_compile devices=all_tpu_devices(sess) epoch_loop(Val(batch_size), typeof(resnet)) #, XRTArray(nbatches), XRTArray(0.1f0))
+sess = TPUSession("localhost:8470")
+compld = @tpu_compile devices=all_tpu_devices(sess) epoch_loop(Val(batch_size), Val(nbatches), typeof(resnet)) #, XRTArray(nbatches), XRTArray(0.1f0))
 
 @info "About to start"
 
-inputs = [ TensorFlow.Ops.zeros(Tensor{Float32}, (224*224*3*batch_size,)) ]
+devices = unique(XLA.tf_host_cpu_device(sess, tpu) for tpu in all_tpu_devices(sess))
+
+inputs = Dict(device => with_device(device) do
+    [ fill(TensorFlow.constant(0f0), (224*224*3*batch_size,)), fill(TensorFlow.constant(Int32(0)), (batch_size,)) ]
+end for device in devices)
 
 all_ops = [ XLA.make_xrt_execute_on(tpu, compld) for tpu in all_tpu_devices(sess) ]
 
 let infeed_ops = [
-        XLA.make_infeed_on(sess, tpu, (Float32,), ((224*224*3*batch_size,),), inputs) for tpu in all_tpu_devices(sess)
+        XLA.make_infeed_on(sess, tpu, (Float32, Int32), ((224*224*3*batch_size,),(batch_size,)), inputs[XLA.tf_host_cpu_device(sess, tpu)]) for tpu in all_tpu_devices(sess)
     ],
     outfeed_ops = [
         XLA.make_outfeed_on(sess, tpu, Tuple{XRTArray{Float32, (), 0}}) for tpu in all_tpu_devices(sess)

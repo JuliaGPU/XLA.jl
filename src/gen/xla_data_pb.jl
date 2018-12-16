@@ -62,33 +62,42 @@ mutable struct PaddingConfig <: ProtoType
     PaddingConfig(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct PaddingConfig
 
+mutable struct Tile <: ProtoType
+    dimensions::Base.Vector{Int64}
+    Tile(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct Tile
+const __pack_Tile = Symbol[:dimensions]
+meta(t::Type{Tile}) = meta(t, ProtoBuf.DEF_REQ, ProtoBuf.DEF_FNUM, ProtoBuf.DEF_VAL, true, __pack_Tile, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
+
 mutable struct Layout <: ProtoType
     format::Int32
     minor_to_major::Base.Vector{Int64}
     max_sparse_elements::Int64
+    tiles::Base.Vector{Tile}
+    element_size_in_bits::Int64
     Layout(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct Layout
-const __fnum_Layout = Int[4,1,5]
+const __fnum_Layout = Int[4,1,5,6,7]
 const __pack_Layout = Symbol[:minor_to_major]
 meta(t::Type{Layout}) = meta(t, ProtoBuf.DEF_REQ, __fnum_Layout, ProtoBuf.DEF_VAL, true, __pack_Layout, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
-mutable struct Shape <: ProtoType
+mutable struct ShapeProto <: ProtoType
     element_type::Int32
     dimensions::Base.Vector{Int64}
-    tuple_shapes::Base.Vector{Shape}
+    tuple_shapes::Base.Vector{ShapeProto}
     layout::Layout
-    Shape(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
-end #mutable struct Shape
-const __fnum_Shape = Int[2,3,4,5]
-const __pack_Shape = Symbol[:dimensions]
-meta(t::Type{Shape}) = meta(t, ProtoBuf.DEF_REQ, __fnum_Shape, ProtoBuf.DEF_VAL, true, __pack_Shape, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
+    ShapeProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct ShapeProto
+const __fnum_ShapeProto = Int[2,3,4,5]
+const __pack_ShapeProto = Symbol[:dimensions]
+meta(t::Type{ShapeProto}) = meta(t, ProtoBuf.DEF_REQ, __fnum_ShapeProto, ProtoBuf.DEF_VAL, true, __pack_ShapeProto, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
-mutable struct ProgramShape <: ProtoType
-    parameters::Base.Vector{Shape}
-    result::Shape
+mutable struct ProgramShapeProto <: ProtoType
+    parameters::Base.Vector{ShapeProto}
+    result::ShapeProto
     parameter_names::Base.Vector{AbstractString}
-    ProgramShape(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
-end #mutable struct ProgramShape
+    ProgramShapeProto(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
+end #mutable struct ProgramShapeProto
 
 mutable struct ComputationStats <: ProtoType
     flop_count::Float64
@@ -160,7 +169,7 @@ mutable struct DeviceAssignmentProto <: ProtoType
 end #mutable struct DeviceAssignmentProto
 
 mutable struct LiteralProto <: ProtoType
-    shape::Shape
+    shape::ShapeProto
     preds::Base.Vector{Bool}
     s8s::Array{UInt8,1}
     u8s::Array{UInt8,1}
@@ -256,7 +265,7 @@ const OpSharding_Type = __enum_OpSharding_Type()
 
 mutable struct OpSharding <: ProtoType
     _type::Int32
-    tile_shape::Shape
+    tile_shape::ShapeProto
     tile_assignment_dimensions::Base.Vector{Int64}
     tile_assignment_devices::Base.Vector{Int64}
     tuple_shardings::Base.Vector{OpSharding}
@@ -293,4 +302,4 @@ end #mutable struct PrecisionConfig
 const __pack_PrecisionConfig = Symbol[:operand_precision]
 meta(t::Type{PrecisionConfig}) = meta(t, ProtoBuf.DEF_REQ, ProtoBuf.DEF_FNUM, ProtoBuf.DEF_VAL, true, __pack_PrecisionConfig, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES, ProtoBuf.DEF_FIELD_TYPES)
 
-export PrimitiveType, Format, FftType, RandomDistribution, PaddingConfig_PaddingConfigDimension, PaddingConfig, Layout, Shape, ProgramShape, ComputationStats, OpMetadata, ExecutionProfile, ExecutionHandle, GlobalDataHandle, DeviceHandle, ChannelHandle_ChannelType, ChannelHandle, DeviceAssignmentProto_ComputationDevice, DeviceAssignmentProto, LiteralProto, WindowDimension, Window, GatherDimensionNumbers, ScatterDimensionNumbers, ConvolutionDimensionNumbers, DotDimensionNumbers, OpSharding_Type, OpSharding, ReplicaGroup, SourceTarget, PrecisionConfig_Precision, PrecisionConfig
+export PrimitiveType, Format, FftType, RandomDistribution, PaddingConfig_PaddingConfigDimension, PaddingConfig, Tile, Layout, ShapeProto, ProgramShapeProto, ComputationStats, OpMetadata, ExecutionProfile, ExecutionHandle, GlobalDataHandle, DeviceHandle, ChannelHandle_ChannelType, ChannelHandle, DeviceAssignmentProto_ComputationDevice, DeviceAssignmentProto, LiteralProto, WindowDimension, Window, GatherDimensionNumbers, ScatterDimensionNumbers, ConvolutionDimensionNumbers, DotDimensionNumbers, OpSharding_Type, OpSharding, ReplicaGroup, SourceTarget, PrecisionConfig_Precision, PrecisionConfig
