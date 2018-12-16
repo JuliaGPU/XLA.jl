@@ -11,6 +11,8 @@ module XLA
     using .xrt
     using .xla
     using .tensorflow.tpu
+    const Shape = ShapeProto
+    const ProgramShape = ProgramShapeProto
 
     include("literal.jl")
     include("xrt.jl")

@@ -25,9 +25,10 @@ mutable struct XLAComputationConfig <: ProtoType
     num_replicas::Int32
     num_cores_per_replica::Int32
     host_compute_metadata::tensorflow.tf2xla.HostComputeMetadata
-    program_shape::xla.ProgramShape
-    per_core_program_shape::Base.Vector{xla.ProgramShape}
+    program_shape::xla.ProgramShapeProto
+    per_core_program_shape::Base.Vector{xla.ProgramShapeProto}
     device_assignment::DeviceAssignment
+    debug_options::xla.DebugOptions
     XLAComputationConfig(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct XLAComputationConfig
 
@@ -57,6 +58,7 @@ mutable struct XRTExecutionConfig <: ProtoType
     rng_seed::UInt32
     release_input_handles::Bool
     release_compilation_handle::Bool
+    return_exploded_tuple::Bool
     XRTExecutionConfig(; kwargs...) = (o=new(); fillunset(o); isempty(kwargs) || ProtoBuf._protobuild(o, kwargs); o)
 end #mutable struct XRTExecutionConfig
 
