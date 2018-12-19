@@ -1,15 +1,15 @@
 using Zygote
 using Statistics
 
-# We modify (the implementation of) batchnorm to be more ammenable to TPUs.
+# We modify (the implementation of) batchnorm to be more ammenable to TPUs
 struct TPUBatchNorm{F,V,W}
    λ::F  # activation function
    β::V  # bias
    γ::V  # scale
    μ::W  # moving mean
    σ::W  # moving std
-   ϵ::XRTArray{Float32, (), 0}
-   momentum::XRTArray{Float32, (), 0}
+   ϵ::Float32
+   momentum::Float32
    #active::Bool
 end
 
@@ -41,23 +41,27 @@ function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ε, x)
   affine_shape = compute_affine_shape(x)
   μ = reshape(bn_μ, affine_shape...)
   σ = reshape(bn_σ, affine_shape...)
-  (μ, σ)
+  return (x .- μ)./σ
 end
 
 @Zygote.adjoint function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ϵ, x)
   ϵ = convert(eltype(x), bn_ϵ)
   axes = (1, 2, 4)
+  m = prod(size.(Ref(x), axes))
+
+  # Calculate μ and σ for the "forward pass"
   μ = mean(x, dims = axes)
   meansub = (x .- μ)
   sq = meansub .* meansub
   σ = sqrt.(mean(sq, dims = axes) .+ ϵ)
-  m = let sz = size(x), dims = length(size(x))
-    prod(ntuple(i->sz[i], dims-2)) * sz[end]
-  end
-  (μ, σ), let μ=dropdims(μ, dims = axes),
-              σ=dropdims(σ, dims = axes) .* XRTArray(convert(eltype(x), m) / convert(eltype(x), m - 1))
+
+  x̂ = (x .- μ)./σ
+  # Return "forward pass" calculation and closure that returns our "gradients"
+  x̂, let μ_dropped=dropdims(μ, dims = axes),
+         σ_dropped=dropdims(σ, dims = axes) .* convert(eltype(x), m) / convert(eltype(x), m - 1)
     function(Δ)
-      (nothing, μ, σ, nothing, nothing)
+      # calculate sensitivities on x, first as contributions from μ, then σ:
+      return (nothing, μ_dropped, σ_dropped, nothing, 1 ./ σ .*(Δ .- mean(Δ, dims=axes) .- x̂ .* mean(Δ .* x̂, dims=axes)))
     end
   end
 end
@@ -67,25 +71,24 @@ function (BN::TPUBatchNorm)(x)
   β = BN.β
   affine_shape = compute_affine_shape(x)
 
-  tup = batchnorm_statistics(true, BN.μ, BN.σ, BN.ϵ, x)
-  μ = first(tup)
-  σ = first(Base.tail(tup))
+  x̂ = batchnorm_statistics(true, BN.μ, BN.σ, BN.ϵ, x)
 
   let λ = BN.λ
-    λ.(reshape(γ, affine_shape...) .* ((x .- μ) ./ σ) .+ reshape(β, affine_shape...))
+    λ.(reshape(γ, affine_shape...) .* x̂ .+ reshape(β, affine_shape...))
   end
 end
 
 function update_params(BN::TPUBatchNorm{F,V,W}, updates, η) where {F,V,W}
+    @show updates
     mtm = BN.momentum
     TPUBatchNorm{F,V,W}(
       update_params(BN.λ, updates.λ, η),
       update_params(BN.β, updates.β, η),
       update_params(BN.γ, updates.γ, η),
-      (XRTArray(1f0) - mtm) .* BN.μ + mtm .* updates.μ,
-      (XRTArray(1f0) - mtm) .* BN.σ + mtm .* updates.σ,
+      (1f0 - mtm) .* BN.μ + mtm .* updates.μ,
+      (1f0 - mtm) .* BN.σ + mtm .* updates.σ,
       BN.ϵ, mtm #, BN.active
     )
 end
 
-map_to_tpu(x::Flux.BatchNorm) = TPUBatchNorm(map(map_to_tpu, Flux.children(x))[1:end-1]...)
+map_to_tpu(x::CPUBatchNorm) = TPUBatchNorm(map(map_to_tpu, Flux.children(x))...)
