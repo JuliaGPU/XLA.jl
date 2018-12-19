@@ -448,6 +448,8 @@ function Base.getindex(A::XRTVector{T}, i::XRTArray{<:Integer, (), 0}) where {T}
     convert(T, ret)
 end
 Base.getindex(A::XRTVector, i::Int64) = Base.getindex(A, XRTArray{Int64, (), 0}(i))
+# Override for scalars
+Base.getindex(x::XRTArray{T,(),0}) where {T} = x
 
 using DiffRules
 DiffRules.select(p::XRTArray{Bool, (), 0}, x::XRTArray{T, (), 0}, y::XRTArray{T, (), 0}) where {T} =
