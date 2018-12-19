@@ -67,7 +67,9 @@ function resnet50()
   push!(layer_arr, x -> meanpool(x, (7,7)))
   push!(layer_arr, x -> reshape(x, :, size(x,4)))
   push!(layer_arr, (Dense(2048, 1000)))
-  push!(layer_arr, softmax)
+
+  # Disable softmax, use logitcrossentropy instead
+  #push!(layer_arr, softmax)
 
   Chain(layer_arr...)
 end
