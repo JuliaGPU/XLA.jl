@@ -3,7 +3,7 @@ using ForwardDiff
 using DiffRules
 using SpecialFunctions
 using NaNMath
-using Zygote: @grad
+using Zygote: @adjoint
 
 ForwardDiff.can_dual(::Type{XRTArray{T,(),0}} where T) = true
 Zygote.isscalar(::XRTArray{<:Any,(),0}) = true
@@ -28,7 +28,7 @@ end
 for (M, f, arity) in DiffRules.diffrules()
   arity == 1 || continue
   @eval begin
-    @grad $M.$f(x::XRTScalar) = $M.$f(x),
+    @adjoint $M.$f(x::XRTScalar) = $M.$f(x),
       Δ -> (Δ * $(DiffRules.diffrule(M, f, :x)),)
   end
 end
@@ -37,12 +37,12 @@ for (M, f, arity) in DiffRules.diffrules()
   arity == 2 || continue
   da, db = DiffRules.diffrule(M, f, :a, :b)
   @eval begin
-    @grad $M.$f(a::XRTScalar, b::XRTScalar) = $M.$f(a, b),
+    @adjoint $M.$f(a::XRTScalar, b::XRTScalar) = $M.$f(a, b),
       Δ -> (Δ * $da, Δ * $db)
   end
 end
 
-@grad XRTArray(a::Real) = XRTArray(a), Δ -> (Δ,)
+@adjoint XRTArray(a::Real) = XRTArray(a), Δ -> (Δ,)
 
 # This is necessary, because even XRT scalars are AbstractArrays
 Zygote.accum(a::XRTArray, b::XRTArray) = a+b

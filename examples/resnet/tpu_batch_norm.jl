@@ -32,7 +32,7 @@ function compute_affine_shape(x)
   =#
   affine_shape
 end
-@Zygote.grad compute_affine_shape(x) = compute_affine_shape(x), Δ->(nothing,)
+@Zygote.adjoint compute_affine_shape(x) = compute_affine_shape(x), Δ->(nothing,)
 
 # This is a bit of a trick. We use Zygote's backward pass infrastructure
 # to backpropagate the batchnorm statistics to the parameter update
@@ -44,7 +44,7 @@ function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ε, x)
   (μ, σ)
 end
 
-@Zygote.grad function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ϵ, x)
+@Zygote.adjoint function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ϵ, x)
   ϵ = convert(eltype(x), bn_ϵ)
   axes = (1, 2, 4)
   μ = mean(x, dims = axes)
