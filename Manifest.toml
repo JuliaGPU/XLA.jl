@@ -43,7 +43,7 @@ version = "0.3.0"
 deps = ["LinearAlgebra"]
 git-tree-sha1 = "4fbd5323845c80a082f1c3b911989f9ca9053468"
 repo-rev = "master"
-repo-url = "git@github.com:JuliaComputing/BFloat16s.jl.git"
+repo-url = "https://github.com/JuliaComputing/BFloat16s.jl.git"
 uuid = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
 version = "0.1.0"
 
