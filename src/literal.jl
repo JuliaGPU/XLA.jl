@@ -1,6 +1,9 @@
+using BFloat16s
+
 const XLAScalar = Union{Bool, Int8, Int16, Int32, Int64,
                         UInt8, UInt16, UInt32, UInt64,
-                        Float16, Float32, Float64, Complex{Float32}}
+                        BFloat16, Float16, Float32, Float64,
+                        Complex{Float32}}
 
 struct XlaType
     which::Int32
@@ -30,6 +33,7 @@ const xla_type_mapping = Dict{Int32, Type}(
     xla.PrimitiveType.U16  => UInt16,
     xla.PrimitiveType.U32  => UInt32,
     xla.PrimitiveType.U64  => UInt64,
+    xla.PrimitiveType.BF16  => BFloat16,
     xla.PrimitiveType.F16  => Float16,
     xla.PrimitiveType.F32  => Float32,
     xla.PrimitiveType.F64  => Float64,
@@ -67,6 +71,8 @@ function assign_data!(lp::LiteralProto, a::Vector{<:XLAScalar})
         lp.u64s = vec(a)
     elseif eltype(a) == Float16
         lp.f16s = vec(a)
+    elseif eltype(a) == BFloat16
+        lp.bf16s = collect(reinterpret(UInt8, vec(a)))
     elseif eltype(a) == Float32
         lp.f32s = vec(a)
     elseif eltype(a) == Float64
@@ -124,6 +130,8 @@ function to_data(lp::LiteralProto)
         return lp.u32s
     elseif elt == xla.PrimitiveType.U64
         return lp.u64s
+    elseif elt == xla.PrimitiveType.BF16
+        return collect(reinterpret(BFloat16, lp.bf16s))
     elseif elt == xla.PrimitiveType.F16
         return lp.f16s
     elseif elt == xla.PrimitiveType.F32
