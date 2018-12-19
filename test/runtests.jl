@@ -17,8 +17,13 @@ try
     result = run((@tpu_compile f(A, B)), A, B)
     @test isa(result, XLA.XRTRemoteStruct)
     @test isa(fetch(result), Tuple{XRTArray{Float32, (10, 10), 2}, XRTArray{Float32, (10, 10), 2}})
+
+    # Test scalar broadcasting
+    bcastfoo() = Base.Broadcast.broadcasted(+, XRTArray(1), XRTArray(1))[] 
+    run(@tpu_compile bcastfoo())
 finally
     GC.gc() # Try running finalizers, before the process exits
     close(sess)
     kill(xrt_server_process)
 end
+
