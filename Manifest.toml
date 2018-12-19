@@ -39,6 +39,14 @@ git-tree-sha1 = "2e2536e9e6f27c4f8d09d8442b61a7ae0b910c28"
 uuid = "39de3d68-74b9-583c-8d2d-e117c070f3a9"
 version = "0.3.0"
 
+[[BFloat16s]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "4fbd5323845c80a082f1c3b911989f9ca9053468"
+repo-rev = "master"
+repo-url = "git@github.com:JuliaComputing/BFloat16s.jl.git"
+uuid = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
+version = "0.1.0"
+
 [[BSON]]
 deps = ["Test"]
 git-tree-sha1 = "922b43e731601b73f0e53f1cc94ea719b94f673a"

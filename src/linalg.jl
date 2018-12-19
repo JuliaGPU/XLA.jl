@@ -105,6 +105,10 @@ Base.sqrt(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, XRTA
     convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
 @eval Base.:<=(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B)
+@eval Base.:==(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+    GenericHloOp{$(QuoteNode(Symbol("equal-to")))}(Bool, ())(A, B)
+@eval Base.:(!=)(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+    GenericHloOp{$(QuoteNode(Symbol("not-equal-to")))}(Bool, ())(A, B)
 Base.inv(x::XRTScalar{T}) where {T} = XRTArray(one(T))/x
 
 Base.:-(x::XRTScalar{T}) where {T} = -(XRTArray(zero(T)), x)

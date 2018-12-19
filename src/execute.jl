@@ -1,7 +1,4 @@
 # Run a single op over XRTArrays
-const XLAScalar = Union{Bool, Int8, Int16, Int32, Int64,
-                        UInt8, UInt16, UInt32, UInt64,
-                        Float16, Float32, Float64, Complex{Float32}}
 const AnyXLA = Union{XRTArray, XLAScalar, HloToken}
 
 function build_computation(op::HloOp, args::AnyXLA...)

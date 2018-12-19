@@ -3,6 +3,7 @@ uuid = "1ae4bca4-de81-11e8-0eca-6d3e4e7c4181"
 authors = ["Keno Fischer <keno@juliacomputing.com>", "Elliot Saba <elliot.saba@juliacomputing.com>"]
 
 [deps]
+BFloat16s = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
 Compat = "34da2185-b29b-5c13-b0c7-acf172513d20"
 DiffRules = "b552c78f-8df3-52c6-915a-8e097449b14b"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
