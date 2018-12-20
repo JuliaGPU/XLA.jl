@@ -79,7 +79,6 @@ function (BN::CPUBatchNorm)(x)
 end
 
 function update_params(BN::CPUBatchNorm{F,V,W}, updates, η) where {F,V,W}
-    @show updates
     mtm = BN.momentum
     CPUBatchNorm{F,V,W}(
       update_params(BN.λ, updates.λ, η),
@@ -90,5 +89,3 @@ function update_params(BN::CPUBatchNorm{F,V,W}, updates, η) where {F,V,W}
       BN.ϵ, mtm #, BN.active
     )
 end
-
-#map_to_host(x::TPUBatchNorm) = CPUBatchNorm(map(map_to_host, Flux.children(x))...)
