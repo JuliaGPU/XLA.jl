@@ -93,7 +93,7 @@ end
 Base.zero(::Type{XRTArray{T, Sz, N}}) where {T, Sz, N} = HloBroadcast(ntuple(i->i-1, ndims(T)), Sz)(XRTArray((zero(T),)))
 
 Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
-Base.zero(A::XRTArray{<:Any, (), 0}) = zero(typeof(A))
+Base.zero(A::XRTArray) = zero(typeof(A))
 Base.one(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(one(T))
 Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
