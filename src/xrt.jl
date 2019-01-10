@@ -240,7 +240,7 @@ struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
     end
 end
 
-Base.collect(xs::XRTArray) = xs.storage.localstorage
+Base.collect(xs::XRTArray) = convert(Array, xs)
 
 function read_literal(rs::XRTAllocation)
     sess, dev, h = rs.sess, rs.device, rs.h
