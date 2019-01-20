@@ -81,14 +81,28 @@ function (BN::TPUBatchNorm)(x)
   end
 end
 
-function update_params(BN::TPUBatchNorm{F,V,W}, updates, η) where {F,V,W}
+function update_params(BN::TPUBatchNorm{F,V,W}, updates, state, η, β) where {F,V,W}
     mtm = BN.momentum
-    TPUBatchNorm{F,V,W}(
-      update_params(BN.λ, updates.λ, η),
-      update_params(BN.β, updates.β, η),
-      update_params(BN.γ, updates.γ, η),
+    new_λ, new_λ_state = update_params(BN.λ, updates.λ, state[1], η, β)
+    new_β, new_β_state = update_params(BN.β, updates.β, state[2], η, β)
+    new_γ, new_γ_state = update_params(BN.γ, updates.γ, state[3], η, β)
+
+    new_BN = TPUBatchNorm{F,V,W}(
+      new_λ,
+      new_β,
+      new_γ,
       (XRTArray(1f0) - mtm) .* BN.μ + mtm .* updates.μ,
       (XRTArray(1f0) - mtm) .* BN.σ + mtm .* updates.σ,
       BN.ϵ, mtm #, BN.active
     )
+    new_state = tuple(
+      new_λ_state,
+      new_β_state,
+      new_γ_state,
+      state[4],
+      state[5],
+      state[6],
+      state[7],
+    )
+    return (new_BN, new_state)
 end

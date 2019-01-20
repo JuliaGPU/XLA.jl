@@ -52,12 +52,14 @@ Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{T}) where T = x
 using Base.Meta
 for (binop, xlaop) in (
         (:+, :add),
-         (:-, :subtract),
-         (:/, :divide),
-         (:*, :multiply),
-         (:&, :and),
-         (:<<, Symbol("shift-left")),
-         (:>>>, Symbol("shift-right-logical")))
+        (:-, :subtract),
+        (:/, :divide),
+        (:*, :multiply),
+        (:&, :and),
+        (:<<, Symbol("shift-left")),
+        (:>>>, Symbol("shift-right-logical")),
+        (:^, :power),
+    )
     @eval Base.$(binop)(A::XRTScalar{T},
                         B::XRTScalar{T}) where {T<:XLAScalar} =
         GenericHloOp{$(quot(xlaop))}(T, ())(A, B)
