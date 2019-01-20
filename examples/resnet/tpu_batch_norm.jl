@@ -60,11 +60,10 @@ end
   x̂, let μ_dropped=dropdims(μ, dims = axes),
          σ_dropped=dropdims(σ, dims = axes) .* convert(eltype(x), m) / convert(eltype(x), m - 1)
     function(Δ)
-      let axes = (1, 2, 4)
-        # calculate sensitivities on x, first as contributions from μ, then σ:
-        μ_sens = mean(Δ, dims=axes)
-        σ_sens = mean(Δ .* x̂, dims=axes)
-        return (nothing, μ_dropped, σ_dropped, nothing, 1f0 ./ σ .*(Δ .- μ_sens .- x̂ .* σ_sens))
+      let axes = (1, 2, 4), x̂ = x̂
+        # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
+        Δ_x = (Δ .- mean(Δ, dims=axes) .- x̂ .* mean(Δ .* x̂, dims=axes))./σ
+        return (nothing, μ_dropped, σ_dropped, nothing, Δ_x)
       end
     end
   end
