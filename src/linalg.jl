@@ -103,9 +103,9 @@ Base.log(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:log}(T, ())(A)
 Base.sqrt(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, XRTArray(convert(T, 0.5)))
 @eval Base.isless(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
-@eval Base.:<=(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+@eval Base.:(<=)(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B)
-@eval Base.:==(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+@eval Base.:(==)(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("equal-to")))}(Bool, ())(A, B)
 @eval Base.:(!=)(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("not-equal-to")))}(Bool, ())(A, B)
