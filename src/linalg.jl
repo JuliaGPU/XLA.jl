@@ -260,7 +260,7 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
         pad_total = padded_in_size - isz[i]
         pad_before = max(div(pad_total, 2), 0)
         pad_after = pad_total - pad_before
-        WindowDims(osz[i], d, pad_before, pad_after, s, 1, true)
+        WindowDims(osz[i], d, pad_before, pad_after, s, 1, false)
     end
     convdims = ConvDimNums(
         # N.B. The input and output dimensions are exchanged here from the
