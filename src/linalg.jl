@@ -260,9 +260,9 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
         expanded_osz = (osz[i]-1)*s + 1
         padded_in_size = expanded_osz + (sz - 1) * d
         pad_total = padded_in_size - isz[i]
-        pad_before = max(div(pad_total, 2), 0)
+        pad_before = max(ceil(Int, pad_total/2), 0)
         pad_after = pad_total - pad_before
-        WindowDims(osz[i], d, pad_before, pad_after, s, 1, true)
+        WindowDims(osz[i], d, pad_before, pad_after, s, 1, false)
     end
     convdims = ConvDimNums(
         # N.B. The input and output dimensions are exchanged here from the
@@ -272,6 +272,7 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
         2, 3, (0, 1)
     )
     r = HloConv(windows, convdims)(input, dy)
+    r = HloRev((0,1))(r)
     @assert size(r) == size(kernel)
     r
 end
