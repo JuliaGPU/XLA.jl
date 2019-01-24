@@ -377,11 +377,15 @@ dims_tuple(A, n::Int) = (n-1,)
     reshape(A, Base._reshape_uncolon(A, dims))
 end
 
+@Base.pure rev_tuple(n) = reverse(n)
+
 @inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Int}})
     prod(dims) == prod(size(A)) || Base._throw_dmrsa(dims, prod(size(A)))
-    HloReshape(dims)(
-        # HLO reshape semantics collapse the opposite way
-        HloTranspose(rev_dims_tuple(ndims(A)))(A)
+    HloTranspose(rev_dims_tuple(length(dims)))(
+       HloReshape(rev_tuple(dims))(
+            # HLO reshape semantics collapse the opposite way
+            HloTranspose(rev_dims_tuple(ndims(A)))(A)
+       )
     )
 end
 
