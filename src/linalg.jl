@@ -302,8 +302,6 @@ function NNlib.meanpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
 end
 
 function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
-    wsize = convert(eltype(x), prod(k))
-    dy ./ XRTArray(wsize)
     HloSelectAndScatter{typeof(>=), typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(>=, +, x, dy, XRTArray(zero(eltype(x))))
@@ -352,6 +350,8 @@ function NNlib.∇meanpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(
     #
     # TODO: Does it make sense to special case to the case of non-overlapping windows
     # or does XLA take care of that?
+    wsize = convert(eltype(x), prod(k))
+    dy = dy ./ XRTArray(wsize)
     pdy = HloPad(make_pad_config(x, k, pad, stride))(dy, XRTArray(zero(eltype(dy))))
     HloReduceWindow{typeof(+)}(
         make_pooling_windows(x, k, pad, map(_->1, k))
