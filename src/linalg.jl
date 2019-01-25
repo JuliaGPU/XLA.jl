@@ -52,12 +52,14 @@ Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{T}) where T = x
 using Base.Meta
 for (binop, xlaop) in (
         (:+, :add),
-         (:-, :subtract),
-         (:/, :divide),
-         (:*, :multiply),
-         (:&, :and),
-         (:<<, Symbol("shift-left")),
-         (:>>>, Symbol("shift-right-logical")))
+        (:-, :subtract),
+        (:/, :divide),
+        (:*, :multiply),
+        (:&, :and),
+        (:<<, Symbol("shift-left")),
+        (:>>>, Symbol("shift-right-logical")),
+        (:^, :power),
+    )
     @eval Base.$(binop)(A::XRTScalar{T},
                         B::XRTScalar{T}) where {T<:XLAScalar} =
         GenericHloOp{$(quot(xlaop))}(T, ())(A, B)
@@ -93,7 +95,7 @@ end
 Base.zero(::Type{XRTArray{T, Sz, N}}) where {T, Sz, N} = HloBroadcast(ntuple(i->i-1, ndims(T)), Sz)(XRTArray((zero(T),)))
 
 Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
-Base.zero(A::XRTArray{<:Any, (), 0}) = zero(typeof(A))
+Base.zero(A::XRTArray) = zero(typeof(A))
 Base.one(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(one(T))
 Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
@@ -258,7 +260,7 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
         expanded_osz = (osz[i]-1)*s + 1
         padded_in_size = expanded_osz + (sz - 1) * d
         pad_total = padded_in_size - isz[i]
-        pad_before = max(div(pad_total, 2), 0)
+        pad_before = max(ceil(Int, pad_total/2), 0)
         pad_after = pad_total - pad_before
         WindowDims(osz[i], d, pad_before, pad_after, s, 1, false)
     end
@@ -270,6 +272,7 @@ function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, in
         2, 3, (0, 1)
     )
     r = HloConv(windows, convdims)(input, dy)
+    r = HloRev((0,1))(r)
     @assert size(r) == size(kernel)
     r
 end
@@ -299,8 +302,6 @@ function NNlib.meanpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
 end
 
 function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
-    wsize = convert(eltype(x), prod(k))
-    dy ./ XRTArray(wsize)
     HloSelectAndScatter{typeof(>=), typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
     )(>=, +, x, dy, XRTArray(zero(eltype(x))))
@@ -349,6 +350,8 @@ function NNlib.∇meanpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(
     #
     # TODO: Does it make sense to special case to the case of non-overlapping windows
     # or does XLA take care of that?
+    wsize = convert(eltype(x), prod(k))
+    dy = dy ./ XRTArray(wsize)
     pdy = HloPad(make_pad_config(x, k, pad, stride))(dy, XRTArray(zero(eltype(dy))))
     HloReduceWindow{typeof(+)}(
         make_pooling_windows(x, k, pad, map(_->1, k))
@@ -374,11 +377,15 @@ dims_tuple(A, n::Int) = (n-1,)
     reshape(A, Base._reshape_uncolon(A, dims))
 end
 
+@Base.pure rev_tuple(n) = reverse(n)
+
 @inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Int}})
     prod(dims) == prod(size(A)) || Base._throw_dmrsa(dims, prod(size(A)))
-    HloReshape(dims)(
-        # HLO reshape semantics collapse the opposite way
-        HloTranspose(rev_dims_tuple(ndims(A)))(A)
+    HloTranspose(rev_dims_tuple(length(dims)))(
+       HloReshape(rev_tuple(dims))(
+            # HLO reshape semantics collapse the opposite way
+            HloTranspose(rev_dims_tuple(ndims(A)))(A)
+       )
     )
 end
 
@@ -452,6 +459,8 @@ function Base.getindex(A::XRTVector{T}, i::XRTArray{<:Integer, (), 0}) where {T}
     convert(T, ret)
 end
 Base.getindex(A::XRTVector, i::Int64) = Base.getindex(A, XRTArray{Int64, (), 0}(i))
+# Override for scalars
+Base.getindex(x::XRTArray{T,(),0}) where {T} = x
 
 using DiffRules
 DiffRules.select(p::XRTArray{Bool, (), 0}, x::XRTArray{T, (), 0}, y::XRTArray{T, (), 0}) where {T} =

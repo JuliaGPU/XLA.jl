@@ -313,7 +313,7 @@ function compile_to_xla(ir, sv; replica_device_coords = nothing)
     # TODO: Since all HLO operations are essentially effect free, we could just have
     # a compilation result that throws this error.
     @check_ir isa(ir.stmts[end], ReturnNode) && isdefined(ir.stmts[end], :val) analyze_unreachable
-    rt = argextype(ir.stmts[end].val, ir, sv.sp)
+    rt = widenconst(argextype(ir.stmts[end].val, ir, sv.sp))
     computations = HloComputationProto[]
     comp = HloComputationProto(
         name = "comp",

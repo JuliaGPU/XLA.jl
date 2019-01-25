@@ -41,23 +41,29 @@ function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ε, x)
   affine_shape = compute_affine_shape(x)
   μ = reshape(bn_μ, affine_shape...)
   σ = reshape(bn_σ, affine_shape...)
-  (μ, σ)
+  return (x .- μ)./σ
 end
 
 @Zygote.adjoint function batchnorm_statistics(active::Bool, bn_μ, bn_σ, bn_ϵ, x)
   ϵ = convert(eltype(x), bn_ϵ)
   axes = (1, 2, 4)
+  m = prod(size.(Ref(x), axes))
+
+  # Calculate μ and σ for the "forward pass"
   μ = mean(x, dims = axes)
   meansub = (x .- μ)
   sq = meansub .* meansub
   σ = sqrt.(mean(sq, dims = axes) .+ ϵ)
-  m = let sz = size(x), dims = length(size(x))
-    prod(ntuple(i->sz[i], dims-2)) * sz[end]
-  end
-  (μ, σ), let μ=dropdims(μ, dims = axes),
-              σ=dropdims(σ, dims = axes) .* convert(eltype(x), m) / convert(eltype(x), m - 1)
+
+  x̂ = (x .- μ)./σ
+  # Return "forward pass" calculation and closure that returns our "gradients"
+  x̂, let μ_dropped=dropdims(μ, dims = axes),
+         σ_dropped=dropdims(σ, dims = axes) .* convert(eltype(x), m) / convert(eltype(x), m - 1)
     function(Δ)
-      (nothing, μ, σ, nothing, nothing)
+      # https://kratzert.github.io/2016/02/12/understanding-the-gradient-flow-through-the-batch-normalization-layer.html
+      Δ_x = (Δ .- mean(Δ, dims=axes) .- x̂ .* mean(Δ .* x̂, dims=axes))./σ
+
+      return (nothing, μ_dropped, σ_dropped, nothing, Δ_x)
     end
   end
 end
@@ -67,12 +73,10 @@ function (BN::CPUBatchNorm)(x)
   β = BN.β
   affine_shape = compute_affine_shape(x)
 
-  tup = batchnorm_statistics(true, BN.μ, BN.σ, BN.ϵ, x)
-  μ = first(tup)
-  σ = first(Base.tail(tup))
+  x̂ = batchnorm_statistics(true, BN.μ, BN.σ, BN.ϵ, x)
 
   let λ = BN.λ
-    λ.(reshape(γ, affine_shape...) .* ((x .- μ) ./ σ) .+ reshape(β, affine_shape...))
+    λ.(reshape(γ, affine_shape...) .* x̂ .+ reshape(β, affine_shape...))
   end
 end
 
@@ -87,5 +91,3 @@ function update_params(BN::CPUBatchNorm{F,V,W}, updates, η) where {F,V,W}
       BN.ϵ, mtm #, BN.active
     )
 end
-
-map_to_host(x::TPUBatchNorm) = CPUBatchNorm(map(map_to_host, Flux.children(x))...)

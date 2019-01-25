@@ -55,7 +55,7 @@ function Base.dump(c::XLAComputation)
    mktemp() do f, io
        writeproto(io, c.hlo_snapshot)
        close(io)
-       run(`$(dirname(dirname(pathof(TensorFlow))))/deps/downloads/bin/dumped_computation_to_text $f`)
+       run(`$(joinpath(dirname(dirname(pathof(TensorFlow))), "deps", "downloads", "bin", "dumped_computation_to_text")) $f`)
    end
    nothing
 end

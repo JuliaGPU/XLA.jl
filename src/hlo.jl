@@ -62,7 +62,9 @@ struct HloDot <: HloOp{:dot}
 end
 function fill_fields!(proto::HloInstructionProto, d::HloDot)
     proto.dot_dimension_numbers = convert(DotDimensionNumbers, d.dims)
-    proto.precision_config = xla.PrecisionConfig(operand_precision = [2 for _ in proto.operand_ids])
+
+    # Ask for increased precision
+    #proto.precision_config = xla.PrecisionConfig(operand_precision = [2 for _ in proto.operand_ids])
 end
 
 const SliceDimensions = HloInstructionProto_SliceDimensions
@@ -132,7 +134,7 @@ function fill_fields!(proto::HloInstructionProto, d::HloConv)
     proto.convolution_dimension_numbers = xla.ConvolutionDimensionNumbers(d.dims)
 
     # Ask for increased precision
-    proto.precision_config = xla.PrecisionConfig(operand_precision = [2 for _ in proto.operand_ids])
+    #proto.precision_config = xla.PrecisionConfig(operand_precision = [2 for _ in proto.operand_ids])
 end
 
 struct HloReduceWindow{fT, N} <: HloOp{Symbol("reduce-window")}
