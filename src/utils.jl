@@ -15,6 +15,8 @@ applyall(fs::Tuple, x) = applyall(Base.tail(fs), first(fs)(x))
 
 (c::ImmutableChain)(x) = applyall(c.layers, x)
 
+# Helper function to take a recursive data structure (Such as an ImmutableChain)
+# and flatten it out into a tuple
 @generated function flatten_tuple(t)
     stmts = Any[]
     tuple_args = Any[]
@@ -40,6 +42,7 @@ applyall(fs::Tuple, x) = applyall(Base.tail(fs), first(fs)(x))
     end
 end
 
+# The inverse of flatten_tuple()
 @generated function unflatten_tuple(pattern, t)
     function expand_arg(pattern, idx)
         fields = Any[]
