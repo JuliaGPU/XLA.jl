@@ -1,0 +1,6 @@
+# No vim files
+*.swp
+
+# No Jupyter notebooks
+.ipynb_checkpoints/
+
