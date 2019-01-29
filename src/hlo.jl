@@ -67,12 +67,6 @@ function fill_fields!(proto::HloInstructionProto, d::HloDot)
     #proto.precision_config = xla.PrecisionConfig(operand_precision = [2 for _ in proto.operand_ids])
 end
 
-const SliceDimensions = HloInstructionProto_SliceDimensions
-struct HloSlice <: HloOp{:slice}
-    slice_dimensions::Vector{SliceDimensions}
-end
-fill_fields!(proto::HloInstructionProto, s::HloSlice) = proto.slice_dimensions = s.slice_dimensions
-
 # This opcode isn't really real - there's very little point to a map
 # unless we're able to compile it
 struct HloMap{T} <: HloOp{:map}
@@ -229,6 +223,48 @@ struct HloDynamicSlice{N} <: HloOp{Symbol("dynamic-slice")}
     sizes::NTuple{N, Int64}
 end
 fill_fields!(proto::HloInstructionProto, r::HloDynamicSlice) = proto.dynamic_slice_sizes = collect(r.sizes)
+
+
+const SliceDimensions = HloInstructionProto_SliceDimensions
+struct SliceDim
+    start::Int64
+    limit::Int64
+    stride::Int64
+end
+Base.convert(::Type{SliceDimensions}, s::SliceDim) =
+    SliceDimensions(start=s.start, limit=s.limit, stride=s.stride)
+
+struct HloSlice{N} <: HloOp{:slice}
+    dims::NTuple{N, SliceDim}
+end
+function fill_fields!(proto::HloInstructionProto, r::HloSlice)
+    proto.slice_dimensions = map(x->convert(SliceDimensions, x), collect(r.dims))
+end
+
+struct GatherDims{N1, N2, N3}
+    offset_dims::NTuple{N1, Int64}
+    collapsed_slice_dims::NTuple{N2, Int64}
+    start_index_map::NTuple{N3, Int64}
+    index_vector_dim::Int64
+end
+
+function Base.convert(::Type{GatherDimensionNumbers}, gds::GatherDims)
+    GatherDimensionNumbers(
+        offset_dims = collect(gds.offset_dims),
+        collapsed_slice_dims = collect(gds.collapsed_slice_dims),
+        start_index_map = collect(gds.start_index_map),
+        index_vector_dim = gds.index_vector_dim
+    )
+end
+
+struct HloGather{N} <: HloOp{:gather}
+    dims::GatherDims
+    slice_sizes::NTuple{N, Int64}
+end
+function fill_fields!(proto::HloInstructionProto, r::HloGather)
+    proto.gather_dimension_numbers = convert(GatherDimensionNumbers, r.dims)
+    proto.gather_slice_sizes = collect(r.slice_sizes)
+end
 
 struct HloConcatenate <: HloOp{Symbol("concatenate")}
     dim::Int64

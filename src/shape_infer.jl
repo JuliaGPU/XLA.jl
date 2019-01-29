@@ -23,9 +23,8 @@ shapes_match(a1::Type{<:XRTArray}, a2::Type{<:XRTArray}, args::Type{<:XRTArray}.
 @Base.pure non_elt_args(T, shape) = shape[1+ndims(T):end]
 
 function shape_infer(op::HloBroadcast,
-                     args::Type{<:XRTArray}...) where {T}
-    eltypes_match(args...) || error("eltype mismatch in $(typeof(op))")
-    (eltype(args[1]), op.result_shape)
+                     arg::Type{<:XRTArray}) where {T}
+    (eltype(arg), op.result_shape)
 end
 
 function shape_infer(op::HloReshape,
@@ -111,7 +110,39 @@ function shape_infer(op::HloDynamicSlice, args...) where {T, Shp}
     (eltype(args[1]), non_elt_args(eltype(args[1]), op.sizes))
 end
 
+@Base.pure function shape_infer(op::HloGather, A::Type{<:XRTArray}, idxs::Type{<:XRTArray})
+    start_idxs = length(size(idxs)) == op.dims.index_vector_dim ?
+        (size(idxs)..., 1) : size(idxs)
+    result_rank = length(op.dims.offset_dims) + length(start_idxs) - 1
+    slice_idx = gather_idx = 1
+    shape = ntuple(result_rank) do i
+        is_window_index = (i - 1) in op.dims.offset_dims
+        if is_window_index
+            while (slice_idx-1) in op.dims.collapsed_slice_dims
+                slice_idx += 1
+            end
+            r = op.slice_sizes[slice_idx]; slice_idx += 1
+            return r
+        else
+            if (gather_idx - 1) == op.dims.index_vector_dim
+                gather_idx += 1
+            end
+            r = start_idxs[gather_idx]; gather_idx += 1
+            return r
+        end
+    end
+    (eltype(A), shape)
+end
+
+@Base.pure slice_dims(dims) = map(dim->div(dim.limit-dim.start, dim.stride), dims)
+function shape_infer(op::HloSlice, args...) where {T,Shp}
+    (eltype(args[1]), slice_dims(op.dims))
+end
+
 @Base.pure function compute_concat_shape(dim::Int64, args...)
+    rank = ndims(args[1])
+    all(x->ndims(x) == rank, args) || error("All arrays must have the same rank")
+    dim <= rank - 1 || error("Concatenation dimension out of bounds")
     ntuple(ndims(args[1])) do i
         if i - 1 == dim
             return sum(j->size(args[j])[i], 1:length(args))

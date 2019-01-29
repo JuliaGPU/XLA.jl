@@ -43,6 +43,15 @@ function process_function_argument(argvals, sig, idx, ir, stmt, sparams)
     argvals
 end
 
+function is_known_call(e::Expr, @nospecialize(func), src, spvals::Core.SimpleVector, slottypes::Vector{Any} = Compiler.empty_slottypes)
+    if e.head !== :call
+        return false
+    end
+    f = Compiler.argextype(e.args[1], src, spvals, slottypes)
+    return (isa(f, Const) && f.val === func) ||
+           (isa(f, DataType) && isdefined(f, :instance) && f.instance === func)
+end
+
 function _compile_to_xla!(computations, comp, ir, sv)
     ir = outline_control_flow!(ir, sv)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
@@ -94,10 +103,12 @@ function _compile_to_xla!(computations, comp, ir, sv)
         isa(stmt, ReturnNode) && continue
         @check_ir !isa(stmt, PhiNode) "Unsupported control flow found in function"
         if isa(stmt, PiNode)
-            ssa_vals[stmt_idx] = hlo_eval(stmt.val)
+            if !(widenconst(argextype(stmt.val, ir, sparams)) <: XLAScalar)
+                ssa_vals[stmt_idx] = hlo_eval(stmt.val)
+            end
             continue
         end
-        if isexpr(stmt, :new) || (isexpr(stmt, :call) && Compiler.is_known_call(stmt, tuple, ir, sparams))
+        if isexpr(stmt, :new) || (isexpr(stmt, :call) && is_known_call(stmt, tuple, ir, sparams))
             args = Any[]
             for arg in stmt.args[2:end]
                 ty = argextype(arg, ir, sparams)
@@ -107,7 +118,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
             ssa_vals[stmt_idx] = HloInstructionProto(comp, HloTuple(), args...)
             continue
         end
-        if isexpr(stmt, :call) && Compiler.is_known_call(stmt, getfield, ir, sparams)
+        if isexpr(stmt, :call) && is_known_call(stmt, getfield, ir, sparams)
             structT = widenconst(argextype(stmt.args[2], ir, sparams))
             elt = argextype(stmt.args[3], ir, sparams)
             isa(elt, Const) || error("non-constant structure indexing (1)")
@@ -139,7 +150,13 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 proto = HloInstructionProto(comp, hlo_inst, args...)
                 sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[i], ir, sparams)), (), 0} for i = 4:length(stmt.args))...}
                 argvals = process_function_argument(nothing, sig, 1, ir, stmt, sparams)
-                ir′, sv′ = code_typed_xla(sig; argvals=argvals)
+                res = code_typed_xla(sig; argvals=argvals)
+                if res === nothing
+                    throw(NotOffloadableError(ir, sv, sprint(io->showerror(io, MethodError(
+                        sig.parameters[1].instance, Tuple{sig.parameters[2:end]...}
+                    )))))
+                end
+                ir′, sv′ = res
                 if sizeof(sig.parameters[1]) != 0
                     ir′.argtypes[1] = Const(argvals[1])
                 end

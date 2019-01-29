@@ -48,9 +48,18 @@ try
     # Test scalar broadcasting
     bcastfoo() = Base.Broadcast.broadcasted(+, XRTArray(1), XRTArray(1))[] 
     run(@tpu_compile bcastfoo())
+    
+    # Test getindex with vector (for OneHotMatrix)
+    from = Float32.(reshape(1:(32*10), (32, 10)))
+    idxs = [1, 2, 3, 2, 1]
+    f_getidx(from, idxs) = from[:, idxs]
+    let compld = @tpu_compile f_getidx(XRTArray(from), XRTArray(idxs))
+        @test convert(Array, run(compld, XRTArray(from), XRTArray(idxs))) ==
+            f_getidx(from, idxs)
+    end
+    
 finally
     GC.gc() # Try running finalizers, before the process exits
     close(sess)
     kill(xrt_server_process)
 end
-

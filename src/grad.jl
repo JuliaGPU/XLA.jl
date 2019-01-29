@@ -46,3 +46,18 @@ end
 
 # This is necessary, because even XRT scalars are AbstractArrays
 Zygote.accum(a::XRTArray, b::XRTArray) = a+b
+
+@adjoint function execute(args...)
+    error("Zygote should not reach the HLO layer. Please define gradients for functions higher up.")
+end
+
+struct getindex_back{T, i}; end
+function (::getindex_back{T, i})(Δ) where {T, i}
+    Δ′ = zero(T)
+    Δ′ = Base.setindex(Δ′, Δ, i...)
+    (Δ′, ntuple(_->nothing, Val(length(i)))...)
+end
+
+@adjoint function getindex(xs::XRTArray, i...)
+    xs[i...], getindex_back{typeof(xs), i}()
+end

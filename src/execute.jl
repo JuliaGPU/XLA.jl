@@ -80,6 +80,7 @@ end
 @noinline (op::HloAfterAll)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloIota)(args::AnyXLA...) = execute(op, args...)
 @noinline (op::HloPad)(args::AnyXLA...) = execute(op, args...)
+@noinline (op::HloGather)(args::AnyXLA...) = execute(op, args...)
 
 # This function is invoked via invokelatest which acts as an inference barrier.
 # Thus statically, we get the type given by `infer_rt`, while dynamically we get
@@ -113,4 +114,3 @@ end
     xargs = args
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(args).parameters...)
 end
-

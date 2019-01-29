@@ -39,7 +39,11 @@ end
 
 function code_typed_xla(sig::Type; argvals=nothing)
     params = Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true, ignore_all_inlining_heuristics=true)
-    ci = code_typed_argtys(sig; params=params, constvals=argvals)[1].first
+    cds = code_typed_argtys(sig; params=params, constvals=argvals)
+    if length(cds) == 0
+        return nothing
+    end
+    ci = cds[1].first
     methods = Base._methods_by_ftype(sig, -1, params.world)
     method = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), sig, params.world).func
     (metharg, methsp) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
@@ -122,4 +126,3 @@ macro tpu(expr)
         end
     end
 end
-
