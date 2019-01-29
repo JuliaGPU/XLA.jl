@@ -343,9 +343,9 @@ uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
 [[Interpolations]]
 deps = ["AxisAlgorithms", "LinearAlgebra", "OffsetArrays", "Random", "Ratios", "SharedArrays", "SparseArrays", "StaticArrays", "Test", "WoodburyMatrices"]
-git-tree-sha1 = "1ec5b78dbfb5ae2b3d7a4987a9287fed4cc31ded"
+git-tree-sha1 = "e8d1c381b1dc5343e5b6d37265acbe1de493d512"
 uuid = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
-version = "0.11.1"
+version = "0.11.2"
 
 [[IntervalSets]]
 deps = ["Compat"]
@@ -691,7 +691,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[Unrolled]]
 deps = ["MacroTools", "Test"]
-path = "/home/keno/.julia/dev/Unrolled"
+git-tree-sha1 = "f394a0c9469927a9bbba2fb6014c022e24fe1ba4"
+repo-rev = "master"
+repo-url = "https://github.com/cstjean/Unrolled.jl.git"
 uuid = "9602ed7d-8fef-5bc8-8597-8f21381861e8"
 version = "0.1.2+"
 
