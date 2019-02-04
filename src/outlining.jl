@@ -299,6 +299,25 @@ function outline_loop!(ir, sv, domtree, loop_header)
                 push!(used_outside, val)
             end
         end
+        # We also need to scan the phi nodes of any successor blocks
+        for succ_bb in ir.cfg.blocks[bb].succs
+            if !dominates(domtree, exit_block, succ_bb)
+                stmt_range = ir.cfg.blocks[succ_bb].stmts
+                for stmt_idx in stmt_range
+                    stmt = ir.stmts[stmt_idx]
+                    (isa(stmt, Nothing) || isa(stmt, PhiNode)) || break
+                    isa(stmt, Nothing) && continue
+                    idx = findfirst(==(bb), stmt.edges)
+                    idx === nothing && continue
+                    isassigned(stmt.values, idx) || continue
+                    val = stmt.values[idx]
+                    isa(val, SSAValue) || continue
+                    val_bb = block_for_inst(ir.cfg, val.id)
+                    (val_bb == loop_header) || continue
+                    push!(used_outside, val)
+                end
+            end
+        end
     end
     types = Any[]
     ssa_order = Any[]
@@ -361,6 +380,23 @@ function outline_loop!(ir, sv, domtree, loop_header)
                 end
             end
             ir.stmts[stmt_idx] = urs[]
+        end
+        for succ_bb in ir.cfg.blocks[bb].succs
+            if !dominates(domtree, exit_block, succ_bb)
+                stmt_range = ir.cfg.blocks[succ_bb].stmts
+                for stmt_idx in stmt_range
+                    stmt = ir.stmts[stmt_idx]
+                    (isa(stmt, Nothing) || isa(stmt, PhiNode)) || break
+                    isa(stmt, Nothing) && continue
+                    idx = findfirst(==(bb), stmt.edges)
+                    idx === nothing && continue
+                    isassigned(stmt.values, idx) || continue
+                    val = stmt.values[idx]
+                    if isa(val, SSAValue) && val in used_outside
+                        stmt.values[idx] = used_outside_replacement[findfirst(==(val), used_outside)]
+                    end
+                end
+            end
         end
     end
     ir = Compiler.compact!(ir)

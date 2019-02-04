@@ -61,9 +61,25 @@ function refine_types!(ir, sv)
     ir
 end
 
+# Kills a bunch of debris that is left over, but base julia cannot yet prove
+# to be effect free. Ideally this function wouldn't exist
+function kill_useless_stmts!(ir)
+    for i = 1:length(ir.stmts)
+        stmt = ir.stmts[i]
+        if isexpr(stmt, :gc_preserve_begin) || isexpr(stmt, :gc_preserve_end)
+            ir.stmts[i] = nothing
+        elseif isexpr(stmt, :foreigncall)
+            if isa(stmt.args[1], QuoteNode) && stmt.args[1].value == :jl_value_ptr
+                ir.stmts[i] = C_NULL
+            end
+        end
+    end
+end
+
 function run_xla_embedding_passes!(ir, sv)
     Compiler.verify_ir(ir);
     ir = Compiler.compact!(ir, true)
+    kill_useless_stmts!(ir)
     Compiler.verify_ir(ir);
     domtree = Compiler.construct_domtree(ir.cfg);
     ir = Compiler.domsort_ssa!(ir, domtree);

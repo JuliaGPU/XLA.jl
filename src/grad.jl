@@ -51,13 +51,16 @@ Zygote.accum(a::XRTArray, b::XRTArray) = a+b
     error("Zygote should not reach the HLO layer. Please define gradients for functions higher up.")
 end
 
-struct getindex_back{T, i}; end
-function (::getindex_back{T, i})(Δ) where {T, i}
+struct getindex_back{T, Ti}
+    i::Ti
+end
+
+function (gb::getindex_back{T, Ti})(Δ) where {T, Ti}
     Δ′ = zero(T)
-    Δ′ = Base.setindex(Δ′, Δ, i...)
-    (Δ′, ntuple(_->nothing, Val(length(i)))...)
+    Δ′ = Base.setindex(Δ′, Δ, gb.i...)
+    (Δ′, ntuple(_->nothing, Val(length(Ti.parameters)))...)
 end
 
 @adjoint function getindex(xs::XRTArray, i...)
-    xs[i...], getindex_back{typeof(xs), i}()
+    xs[i...], getindex_back{typeof(xs), typeof(i)}(i)
 end

@@ -30,6 +30,7 @@ module XLA
     include("utils.jl")
     include("grad.jl")
     include("infeed.jl")
+    include("flux.jl")
 
     function regen_proto()
         tf_path = "/home/keno/tensorflow/tensorflow/"

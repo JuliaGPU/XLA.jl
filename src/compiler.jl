@@ -30,7 +30,8 @@ end
 include("outlining.jl")
 
 function process_function_argument(argvals, sig, idx, ir, stmt, sparams)
-    if sizeof(sig.parameters[idx]) != 0
+    sz = Compiler.isconstType(sig.parameters[idx]) ? 0 : sizeof(sig.parameters[idx])
+    if sz != 0
         # If the function being called has non-zero information, we need to make sure it's a constant
         # In the future, XLA will allow this.
         fty = argextype(stmt.args[2+idx], ir, sparams)
@@ -153,11 +154,11 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 res = code_typed_xla(sig; argvals=argvals)
                 if res === nothing
                     throw(NotOffloadableError(ir, sv, sprint(io->showerror(io, MethodError(
-                        sig.parameters[1].instance, Tuple{sig.parameters[2:end]...}
+                        Compiler.isconstType(sig.parameters[1]) ? sig.parameters[1].parameters[1] : sig.parameters[1].instance, Tuple{sig.parameters[2:end]...}
                     )))))
                 end
                 ir′, sv′ = res
-                if sizeof(sig.parameters[1]) != 0
+                if !Compiler.isconstType(sig.parameters[1]) && sizeof(sig.parameters[1]) != 0
                     ir′.argtypes[1] = Const(argvals[1])
                 end
                 comp′ = HloComputationProto(

@@ -28,9 +28,15 @@ function Base.:*(A::Transpose{<:Any, <:XRTArray}, B::XRTArray)
     HloDot(ddots)(make_hlo_transpose(A.parent), B)
 end
 
-function Base.:*(A::XRTArray, B::Transpose{<:Any, <:XRTArray})
+function Base.:*(A::XRTArray{T}, B::Transpose{S}) where {T, S}
     ddots = DimNums((1,), (0,), (), ())
-    HloDot(ddots)(A, make_hlo_transpose(B.parent))
+    HloDot(ddots)(convert(XRTArray{promote_type(T, S)}, A), make_hlo_transpose(convert(XRTArray{promote_type(T, S)}, B.parent)))
+end
+
+function Base.:*(A::XRTVector{T}, B::Transpose{S, <:XRTVector}) where {T, S}
+    ddots = DimNums((1,), (0,), (), ())
+    HloDot(ddots)(reshape(convert(XRTArray{promote_type(T, S)}, A), (size(A, 1), 1)),
+        make_hlo_transpose(convert(XRTArray{promote_type(T, S)}, B.parent)))
 end
 
 function Base.:*(A::Transpose{<:Any, <:XRTVector}, B::XRTVector)
@@ -108,10 +114,12 @@ embed(x) = x
 concat_dims(::Type{<:XRTArray{T, Sz1}}, Sz2::Tuple) where {T, Sz1} = (Sz1..., Sz2...)
 concat_dims(::Type, Sz2::Tuple) where {T, Sz1} = Sz2
 
+@noinline make_zeros_dims_tuple(::Type{T}) where {T} = ntuple(i->i-1, ndims(T))
+
 function Base.zeros(::Type{XRTArray{T, Sz, N}}) where {T, Sz, N}
     # TODO: This assignment being necessary is probably a compiler bug
     TT = T
-    HloBroadcast(ntuple(i->i-1, ndims(TT)), Sz)(XRTArray((zero(TT),)))::XRTArray{T, Sz, N}
+    HloBroadcast(make_zeros_dims_tuple(TT), Sz)(XRTArray((zero(TT),)))::XRTArray{T, Sz, N}
 end
 Base.zero(X::Type{XRTArray{T, Sz, N}}) where {T, Sz, N} = zeros(X)
 
@@ -228,7 +236,7 @@ function Broadcast.copy(bc::Broadcast.Broadcasted{<:XRTArrayStyle})
         # This could be axes(bc′) if we had better constant prop
         rsize = map(length, Broadcast.combine_axes(bc′.args...))
         args = map(arg->convert(XRTArray, broadcast_to_size(arg, rsize)), bc′.args)
-        return HloMap{typeof(bc′.f)}()(bc′.f, args...)
+        return HloMap{Core.Typeof(bc′.f)}()(bc′.f, args...)
     end
     # TODO: Pull back CPU, do this there
     error("No hope")
@@ -425,8 +433,8 @@ end
 @Base.pure reduced_dimensions_collapes(sz, dims) = ntuple(i->i in dims ? 1 : sz[i], length(sz))
 function Base.mapreduce(f, op, A::XRTArray; dims=:)
     dt = dims_tuple(A, dims)
-    res = HloReduce{typeof(op)}(dt)(op,
-        HloMap{typeof(f)}()(f, A),
+    res = HloReduce{Core.Typeof(op)}(dt)(op,
+        HloMap{Core.Typeof(f)}()(f, A),
         XRTArray(zero(eltype(A)))
     )
     if dims != (:)
@@ -483,20 +491,38 @@ function Base.setindex(A::XRTArray{T,<:Any,N}, up::XRTArray{T,<:Any,N}, rs::Vara
     HloDynamicUpdateSlice()(A, up, HloConcatenate(0)(inds...))
 end
 
-function Base.getindex(A::XRTVector{T}, i::XRTArray{<:Integer, (), 0}) where {T}
+@Base.pure function compute_result_size(tA, tInds) 
+    map(i->size(tA, i),
+        tuple(Iterators.filter(
+            i->tInds.parameters[i] <: Colon, 1:length(tInds.parameters))...))
+end
+
+function Base.getindex(A::XRTArray{T, <:Any, N}, inds::Vararg{Union{Colon, XRTArray{<:Integer, (), 0}}, N}) where {T, N}
     # TODO: It would be better to handle the dim mapping internally,
     # but that requires access to the julia element type, which we don't currently
     # expose
-    inds = HloBroadcast((), (1,))(i)
-    sizes = ntuple(_->1, ndims(A))
+    ind_vector = HloConcatenate(0)(ntuple(Val(length(inds))) do i
+        if isa(inds[i], Colon)
+            HloBroadcast((), (1,))(XRTArray(0))
+        elseif isa(inds[i], XRTArray)
+            HloBroadcast((), (1,))(inds[i] - 1)
+        end
+    end...)
+    sizes = ntuple(Val(length(inds))) do i
+        isa(inds[i], Colon) ? size(A, i) : 1
+    end
     if ndims(T) != 0
         ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
-        inds = HloConcatenate(0)(ones, inds)
+        ind_vector = HloConcatenate(0)(ones, ind_vector)
         sizes = (size(T)..., sizes...)
     end
-    ret = HloDynamicSlice(sizes)(A, inds)
-    ret = HloReshape(size(T))(ret)
-    convert(T, ret)
+    result_sizes = compute_result_size(typeof(A), typeof(inds))
+    ret = HloDynamicSlice(sizes)(A, ind_vector)
+    ret = HloReshape(tuple((ndims(T) == 0 ? () : size(T))..., result_sizes...))(ret)
+    if result_sizes === () && !(T <: XLAScalar)
+        return convert(T, ret)
+    end
+    return ret
 end
 Base.getindex(A::XRTVector, i::Int64) = Base.getindex(A, XRTArray{Int64, (), 0}(i))
 # Override for scalars
@@ -562,6 +588,11 @@ change_eltype(::Type{T}, x::XRTArray{T}) where {T} = x
 Base.convert(::Type{XRTArray{T}}, x::XRTArray{S}) where {T,S} = change_eltype(T, x)
 Base.convert(::Type{XRTArray{T}}, x::XRTArray{T}) where {T} = x
 Base.convert(::Type{XRTArray}, x::XRTArray) = x
+
+for T in Base.uniontypes(XLA.XLAScalar)
+    @eval (::Type{$T})(x::XRTScalar{S}) where {S<:XLAScalar} = convert(XRTArray{$T}, x)
+    @eval (::Type{$T})(x::XRTScalar{$T}) where {S<:XLAScalar} = x
+end
 
 @Base.pure @noinline function padding_tuple(aiT::Type{<:XRTArray}, dims::Int)
     ntuple(_->1, Val(dims))
