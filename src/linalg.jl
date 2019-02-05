@@ -581,6 +581,10 @@ function XRTArray(a::UnitRange{T}) where {T}
     HloIota(T, (length(a),), 0)() .+ first(a)
 end
 
+function XRTArray(a::Transpose)
+    make_hlo_transpose(XRTArray(a.parent))
+end
+
 function change_eltype(T::Type, x::XRTArray)
     GenericHloOp{:convert}(T, size(x))(x)
 end

@@ -218,3 +218,18 @@ infer_rt(op::HloOutfeed, args::Type...) = HloToken
 function infer_rt(op::HloCrossReplicaSum, fT::Type, args::Type...)
     Tuple{args...}
 end
+
+function infer_rt(op::HloMap, f, args::Type...)
+    T, shape = shape_infer(op, typeof(f), args...)
+    XRTArray{T, shape, length(shape)}
+#=  TODO:
+    T = Core.Compiler.return_type(f, Tuple{map(x->XRTArray{eltype(x), (), 0}, args)...})
+    if isa(T, UnionAll) || T.abstract
+        XRTArray{<:T,
+            size(args[1]), length(size(args[1]))}
+    else
+        XRTArray{T,
+            size(args[1]), length(size(args[1]))}
+    end
+=#
+end
