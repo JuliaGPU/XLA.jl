@@ -108,10 +108,16 @@ macro tpu_compile(args...)
     @assert isexpr(expr, :call)
     quote
         let f = $(esc(expr.args[1]))
-            ir, sv = code_typed_xla(f, Base.typesof($(map(esc, expr.args[2:end])...)))
+            argtypes = Base.typesof($(map(esc, expr.args[2:end])...))
+            ir, sv = code_typed_xla(f, argtypes)
             replica_device_coords = $opts
-            compld = XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv; replica_device_coords=replica_device_coords)...)
-            compld
+            try
+                XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv; replica_device_coords=replica_device_coords)...)
+            catch err
+                @warn("Compilation failed; attempting to explain suboptimal inference:")
+                XLA.explain_suboptimal_inference(Tuple{typeof(f), argtypes.parameters...})
+                rethrow(err)
+            end
         end
     end
 end

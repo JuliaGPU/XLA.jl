@@ -39,14 +39,6 @@ git-tree-sha1 = "2e2536e9e6f27c4f8d09d8442b61a7ae0b910c28"
 uuid = "39de3d68-74b9-583c-8d2d-e117c070f3a9"
 version = "0.3.0"
 
-[[BFloat16s]]
-deps = ["LinearAlgebra"]
-git-tree-sha1 = "4fbd5323845c80a082f1c3b911989f9ca9053468"
-repo-rev = "master"
-repo-url = "https://github.com/JuliaComputing/BFloat16s.jl.git"
-uuid = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
-version = "0.1.0"
-
 [[BSON]]
 deps = ["Test"]
 git-tree-sha1 = "922b43e731601b73f0e53f1cc94ea719b94f673a"
@@ -121,6 +113,12 @@ deps = ["Compat", "JSON", "VersionParsing"]
 git-tree-sha1 = "b625d802587c2150c279a40a646fba63f9bd8187"
 uuid = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 version = "1.2.0"
+
+[[Contour]]
+deps = ["LinearAlgebra", "StaticArrays", "Test"]
+git-tree-sha1 = "b974e164358fea753ef853ce7bad97afec15bb80"
+uuid = "d38c429a-6771-53c6-b99e-75d170b6e991"
+version = "0.5.1"
 
 [[CoordinateTransformations]]
 deps = ["Compat", "Rotations", "StaticArrays"]
@@ -202,9 +200,6 @@ git-tree-sha1 = "c94b0787956629036fb2b20fccde9e52b89d079a"
 uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 version = "1.0.5"
 
-[[FileWatching]]
-uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
-
 [[FixedPointNumbers]]
 deps = ["Test"]
 git-tree-sha1 = "b8045033701c3b10bf2324d7203404be7aef88ba"
@@ -227,11 +222,11 @@ repo-url = "https://github.com/Keno/ForwardDiff.jl"
 uuid = "f6369f11-7733-5829-9624-2563aa707210"
 version = "0.10.2+"
 
-[[FunctionWrappers]]
-deps = ["Compat"]
-git-tree-sha1 = "49bf793ebd37db5adaa7ac1eae96c2c97ec86db5"
-uuid = "069b7b12-0de2-55c6-9aab-29f3d0a68a2e"
-version = "1.0.0"
+[[GR]]
+deps = ["Base64", "DelimitedFiles", "LinearAlgebra", "Pkg", "Printf", "Random", "Serialization", "Sockets", "Test"]
+git-tree-sha1 = "41bd911efffb56957b45366770eaaa443de3f782"
+uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
+version = "0.38.1"
 
 [[GZip]]
 deps = ["Libdl", "Test"]
@@ -253,11 +248,11 @@ version = "0.8.0"
 
 [[IRTools]]
 deps = ["InteractiveUtils", "MacroTools", "Test"]
-git-tree-sha1 = "7b8b3f721fe72df69066ad9341008fce22a1f9ff"
-repo-rev = "kf/tpu"
-repo-url = "https://github.com/Keno/IRTools.jl"
+git-tree-sha1 = "23381d236be62fc80de98466b00f1b7427f81aab"
+repo-rev = "master"
+repo-url = "https://github.com/MikeInnes/IRTools.jl.git"
 uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
-version = "0.1.0"
+version = "0.1.1"
 
 [[IdentityRanges]]
 deps = ["OffsetArrays", "Test"]
@@ -288,12 +283,6 @@ deps = ["CatIndices", "ColorVectorSpace", "Colors", "ComputationalResources", "D
 git-tree-sha1 = "964ceed5de3c0a7e352cf0e4df2f2a8e628ae00c"
 uuid = "6a3955dd-da59-5b1f-98d4-e7296123deb5"
 version = "0.5.3"
-
-[[ImageMagick]]
-deps = ["BinaryProvider", "ColorTypes", "FileIO", "FixedPointNumbers", "ImageCore", "InteractiveUtils", "Libdl", "Pkg", "Random", "Test"]
-git-tree-sha1 = "0e4cc77fb131061b3525a97fd7d483b253c3aaad"
-uuid = "6218d12a-5da1-5696-b52f-db25d2ecc6d1"
-version = "0.7.1"
 
 [[ImageMetadata]]
 deps = ["AxisArrays", "ColorVectorSpace", "Colors", "Dates", "FixedPointNumbers", "ImageAxes", "ImageCore", "IndirectArrays", "Statistics", "Test"]
@@ -418,6 +407,12 @@ git-tree-sha1 = "40b4a9149f0967714991328b8155c9ff5f91e755"
 uuid = "739be429-bea8-5141-9913-cc70e7f3736d"
 version = "0.6.7"
 
+[[Measures]]
+deps = ["Test"]
+git-tree-sha1 = "ddfd6d13e330beacdde2c80de27c1c671945e7d9"
+uuid = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
+version = "0.3.0"
+
 [[Media]]
 deps = ["MacroTools", "Test"]
 git-tree-sha1 = "75a54abd10709c01f1b86b84ec225d26e840ed58"
@@ -443,7 +438,7 @@ uuid = "a63ad114-7e13-5084-954f-fe012c677804"
 deps = ["Libdl", "LinearAlgebra", "MacroTools", "Requires", "Test"]
 git-tree-sha1 = "0daba044bddfc84abb27b4a30321b825dcb695ea"
 repo-rev = "kf/convtparams"
-repo-url = "https://github.com/FluxML/NNlib.jl"
+repo-url = "https://github.com/FluxML/NNlib.jl.git"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 version = "0.4.3+"
 
@@ -481,6 +476,24 @@ version = "0.4.2"
 deps = ["Dates", "LibGit2", "Markdown", "Printf", "REPL", "Random", "SHA", "UUIDs"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 
+[[PlotThemes]]
+deps = ["PlotUtils", "Requires", "Test"]
+git-tree-sha1 = "f3afd2d58e1f6ac9be2cea46e4a9083ccc1d990b"
+uuid = "ccf2f8ad-2431-5c83-bf29-c5338b663b6a"
+version = "0.3.0"
+
+[[PlotUtils]]
+deps = ["Colors", "Dates", "Printf", "Random", "Reexport", "Test"]
+git-tree-sha1 = "fd28f30a294a38ec847de95d8ac7ac916ccd7c06"
+uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
+version = "0.5.5"
+
+[[Plots]]
+deps = ["Base64", "Contour", "Dates", "FixedPointNumbers", "GR", "JSON", "LinearAlgebra", "Measures", "NaNMath", "Pkg", "PlotThemes", "PlotUtils", "Printf", "REPL", "Random", "RecipesBase", "Reexport", "Requires", "Showoff", "SparseArrays", "StaticArrays", "Statistics", "StatsBase", "Test", "UUIDs"]
+git-tree-sha1 = "1c345ad538fa31ea6953d89a9d0cbef21e86a3ed"
+uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+version = "0.23.0"
+
 [[Printf]]
 deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
@@ -498,10 +511,8 @@ version = "0.9.0"
 [[ProtoBuf]]
 deps = ["Random", "Serialization", "Sockets", "Test"]
 git-tree-sha1 = "cc57b8d2d37f51f9bdfb440ba933c75764e6e171"
-repo-rev = "master"
-repo-url = "https://github.com/JuliaIO/ProtoBuf.jl.git"
 uuid = "3349acd9-ac6a-5e09-bcdb-63829b23a429"
-version = "0.7.0+"
+version = "0.7.0"
 
 [[PyCall]]
 deps = ["Compat", "Conda", "MacroTools", "Statistics", "VersionParsing"]
@@ -535,6 +546,12 @@ git-tree-sha1 = "fd159bead0a24e6270fd0573a340312bd4645cc2"
 uuid = "c84ed2f1-dad5-54f0-aa8e-dbefe2724439"
 version = "0.3.0"
 
+[[RecipesBase]]
+deps = ["Random", "Test"]
+git-tree-sha1 = "0b3cb370ee4dc00f47f1193101600949f3dcf884"
+uuid = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
+version = "0.6.0"
+
 [[Reexport]]
 deps = ["Pkg"]
 git-tree-sha1 = "7b1d07f411bc8ddb7977ec7f377b97b158514fe0"
@@ -546,18 +563,6 @@ deps = ["Test"]
 git-tree-sha1 = "f6fbf4ba64d295e146e49e021207993b6b48c7d1"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "0.5.2"
-
-[[ReverseDiff]]
-deps = ["DiffResults", "DiffRules", "ForwardDiff", "FunctionWrappers", "LinearAlgebra", "NaNMath", "Random", "SpecialFunctions", "StaticArrays", "Statistics", "Test"]
-git-tree-sha1 = "d44e80d815a1a5abaf1ff1def21bb629cabaffec"
-uuid = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
-version = "0.3.1"
-
-[[Revise]]
-deps = ["Distributed", "FileWatching", "InteractiveUtils", "LibGit2", "OrderedCollections", "Pkg", "REPL", "Random", "Test", "UUIDs", "Unicode"]
-git-tree-sha1 = "341be2df64de382559e2cc307e02ed4192f8a8b7"
-uuid = "295af30f-e4ad-537b-8983-00126c2a3abe"
-version = "1.0.2"
 
 [[Rmath]]
 deps = ["BinaryProvider", "Libdl", "Random", "Statistics", "Test"]
@@ -586,6 +591,12 @@ uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 [[SharedArrays]]
 deps = ["Distributed", "Mmap", "Random", "Serialization"]
 uuid = "1a1011a3-84de-559e-8e89-a11a2f7dc383"
+
+[[Showoff]]
+deps = ["Compat"]
+git-tree-sha1 = "276b24f3ace98bec911be7ff2928d497dc759085"
+uuid = "992d4aef-0814-514b-bc4d-f2e9a6c4116f"
+version = "0.2.1"
 
 [[SimpleTraits]]
 deps = ["InteractiveUtils", "MacroTools", "Test"]
@@ -638,14 +649,6 @@ version = "0.8.0"
 deps = ["Libdl", "LinearAlgebra", "SparseArrays"]
 uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
 
-[[TSVD]]
-deps = ["LinearAlgebra", "SparseArrays", "StaticArrays", "Test"]
-git-tree-sha1 = "8a0fbc41e2593ae6dcae6d57ecdb4f0c73153cc4"
-repo-rev = "an/static"
-repo-url = "https://github.com/andreasnoack/TSVD.jl.git"
-uuid = "9449cd9e-2762-5aa3-a617-5413e99d722e"
-version = "0.3.0+"
-
 [[TensorFlow]]
 deps = ["AutoHashEquals", "Compat", "Conda", "Distributed", "Distributions", "FileIO", "InteractiveUtils", "JLD2", "Juno", "Libdl", "LinearAlgebra", "MLDatasets", "MacroTools", "Pkg", "Printf", "ProtoBuf", "PyCall", "Random", "SpecialFunctions", "Statistics", "StatsFuns", "Test"]
 git-tree-sha1 = "7e1d6766dd61c5c5dd59cd36307d085c8536029c"
@@ -691,9 +694,9 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [[Unrolled]]
 deps = ["MacroTools", "Test"]
-git-tree-sha1 = "f394a0c9469927a9bbba2fb6014c022e24fe1ba4"
-repo-rev = "master"
-repo-url = "https://github.com/cstjean/Unrolled.jl.git"
+git-tree-sha1 = "d5e4078320805b4b05ff32463a33d87e2f7e0a2f"
+repo-rev = "kf/size"
+repo-url = "https://github.com/keno/Unrolled.jl"
 uuid = "9602ed7d-8fef-5bc8-8597-8f21381861e8"
 version = "0.1.2+"
 

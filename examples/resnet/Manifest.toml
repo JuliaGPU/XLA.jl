@@ -154,9 +154,9 @@ uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 
 [[DiffResults]]
 deps = ["Compat", "StaticArrays"]
-git-tree-sha1 = "db8acf46717b13d6c48deb7a12007c7f85a70cf7"
+git-tree-sha1 = "34a4a1e8be7bc99bc9c611b895b5baf37a80584c"
 uuid = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
-version = "0.0.3"
+version = "0.0.4"
 
 [[DiffRules]]
 deps = ["Random", "Test"]
@@ -164,7 +164,7 @@ git-tree-sha1 = "be095bbe9e73225d41e78a06784384233f6ed7f9"
 repo-rev = "kf/tpuhack"
 repo-url = "https://github.com/Keno/DiffRules.jl"
 uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
-version = "0.0.8+"
+version = "0.0.9+"
 
 [[Distances]]
 deps = ["LinearAlgebra", "Printf", "Random", "Statistics", "Test"]
