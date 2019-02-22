@@ -71,6 +71,7 @@ for (binop, xlaop) in (
         (:-, :subtract),
         (:/, :divide),
         (:*, :multiply),
+        (:%, :remainder),
         (:&, :and),
         (:<<, Symbol("shift-left")),
         (:>>>, Symbol("shift-right-logical")),
