@@ -1,4 +1,4 @@
-using Flux
+using Flux, Random
 
 struct ImmutableChain{T<:Tuple}
     layers::T
@@ -130,4 +130,26 @@ function logsoftmax(xs::XRTArray)
 end
 ∇logsoftmax(Δ, xs::XRTArray) = ∇softmax(Δ ./ max.(eps(eltype(xs)),softmax(xs)), xs)
 Zygote.@adjoint logsoftmax(xs::XRTArray) = logsoftmax(xs), Δ -> (∇logsoftmax(Δ, xs),)
+
+
+function Base.sort(x::XRTArray{T,<:Any,1}; keys=x) where {T}
+    return XLA.HloSort{typeof(<)}(0, false)(<, keys, x)[2]
+end
+
+Base.rand(::Type{XRTArray{T}}, shape::Int...) where {T} = XLA.HloRng(T, shape, 1)(XRTArray(typemin(T)),XRTArray(typemax(T)))
+Base.rand(::Type{XRTArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(F, shape, 1)(XRTArray(0.0f0),XRTArray(1.0f0))
+Base.randn(::Type{XRTArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(T, shape, 2)(XRTArray(0.0f0),XRTArray(1.0f0))
+
+# Shuffle by repeatedly sorting x with a random vector as the sorting key.
+# see https://github.com/tensorflow/tensorflow/blob/85deaa11cae878ba2c0e5284085956f75434b5b2/tensorflow/compiler/tf2xla/kernels/random_ops.cc#L83-L143 for more
+Base.@pure calc_rounds(L; exponent=3) = ceil(UInt32, exponent * log(L) / log(typemax(UInt32)))
+function shuffle(x::XRTArray)
+    round_idx = XRTArray(calc_rounds(length(x)))
+    while round_idx > XRTArray(0x00000000)
+        keys = rand(XRTArray{UInt32}, length(x))
+        x = sort(x, keys=keys)
+        round_idx -= XRTArray(0x00000001)
+    end
+    return x
+end
 

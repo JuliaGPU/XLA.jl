@@ -146,7 +146,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
         hlo_inst = argextype(hlo_inst, ir, sparams)
         hlo_inst = hlo_inst.val
         if isa(hlo_inst, HloOp)
-            if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce)
+            if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce) || isa(hlo_inst, HloSort)
                 args = map(hlo_eval, stmt.args[4:end])
                 proto = HloInstructionProto(comp, hlo_inst, args...)
                 sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[i], ir, sparams)), (), 0} for i = 4:length(stmt.args))...}

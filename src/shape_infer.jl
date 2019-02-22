@@ -233,3 +233,5 @@ function infer_rt(op::HloMap, f, args::Type...)
     end
 =#
 end
+
+infer_rt(op::HloSort, f::Type, args::Type...) = Tuple{args...}
