@@ -476,7 +476,7 @@ function Base.setindex(A::XRTVector{T}, v::XRTArray{T, (), 0}, i::XRTArray{<:Int
     # but that requires access to the julia element type, which we don't currently
     # expose
     vb = HloBroadcast(ntuple(i->i-1, ndims(T)), ntuple(_->1, ndims(A)))(v)
-    inds = HloBroadcast((), (1,))(i)
+    inds = HloBroadcast((), (1,))(i - 1)
     if ndims(T) != 0
         ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
         inds = HloConcatenate(0)(ones, inds)
