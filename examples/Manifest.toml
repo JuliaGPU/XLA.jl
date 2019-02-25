@@ -164,13 +164,13 @@ git-tree-sha1 = "be095bbe9e73225d41e78a06784384233f6ed7f9"
 repo-rev = "kf/tpuhack"
 repo-url = "https://github.com/Keno/DiffRules.jl"
 uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
-version = "0.0.9+"
+version = "0.0.10+"
 
 [[Distances]]
 deps = ["LinearAlgebra", "Printf", "Random", "Statistics", "Test"]
-git-tree-sha1 = "0e37d8a95bafbeb9c800ef27ab6f443d29e17610"
+git-tree-sha1 = "a135c7c062023051953141da8437ed74f89d767a"
 uuid = "b4f34e82-e78d-54a5-968a-f98e89d6e8f7"
-version = "0.7.4"
+version = "0.8.0"
 
 [[Distributed]]
 deps = ["LinearAlgebra", "Random", "Serialization", "Sockets"]
@@ -208,7 +208,7 @@ version = "0.5.3"
 
 [[Flux]]
 deps = ["AbstractTrees", "Adapt", "CodecZlib", "Colors", "DiffRules", "ForwardDiff", "Juno", "LinearAlgebra", "MacroTools", "NNlib", "NaNMath", "Printf", "Random", "Reexport", "Requires", "SpecialFunctions", "Statistics", "StatsBase", "Test", "ZipFile"]
-git-tree-sha1 = "5b7b6f3be865be0a14047ec075bdff2655c877f9"
+git-tree-sha1 = "8bec4d693e6d51cca82f93b80d0c890ef7b7e19a"
 repo-rev = "kf/tpu_wip"
 repo-url = "https://github.com/FluxML/Flux.jl.git"
 uuid = "587475ba-b771-5e3f-ad9e-33799f191a9c"
@@ -220,13 +220,13 @@ git-tree-sha1 = "18cbb34bd635f78432c760e6b914714cbe283725"
 repo-rev = "kf/tpu"
 repo-url = "https://github.com/Keno/ForwardDiff.jl"
 uuid = "f6369f11-7733-5829-9624-2563aa707210"
-version = "0.10.2+"
+version = "0.10.3+"
 
 [[GR]]
 deps = ["Base64", "DelimitedFiles", "LinearAlgebra", "Pkg", "Printf", "Random", "Serialization", "Sockets", "Test"]
-git-tree-sha1 = "3c62c19ddf86ff016829fdac1663cd3c75558c34"
+git-tree-sha1 = "41bd911efffb56957b45366770eaaa443de3f782"
 uuid = "28b8d3ca-fb5f-59d9-8090-bfdbd6d07a71"
-version = "0.37.0"
+version = "0.38.1"
 
 [[GZip]]
 deps = ["Libdl", "Test"]
@@ -248,7 +248,7 @@ version = "0.8.0"
 
 [[IRTools]]
 deps = ["InteractiveUtils", "MacroTools", "Test"]
-git-tree-sha1 = "2b1e5eb77d67033084d1a3a5f3737ea84cb8ec7d"
+git-tree-sha1 = "23381d236be62fc80de98466b00f1b7427f81aab"
 repo-rev = "master"
 repo-url = "https://github.com/MikeInnes/IRTools.jl.git"
 uuid = "7869d1d1-7146-5819-86e3-90919afe41df"
@@ -387,9 +387,9 @@ version = "0.3.0"
 
 [[MacroTools]]
 deps = ["Compat"]
-git-tree-sha1 = "c443e1c8d58a4e9f61b708ad0a88286c7042145b"
+git-tree-sha1 = "3fd1a3022952128935b449c33552eb65895380c1"
 uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
-version = "0.4.4"
+version = "0.4.5"
 
 [[MappedArrays]]
 deps = ["Test"]
@@ -691,6 +691,14 @@ uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [[Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
+
+[[Unrolled]]
+deps = ["MacroTools", "Test"]
+git-tree-sha1 = "3c2a0b4fc6b48d777fb42fca38ba1d5f54f3e38d"
+repo-rev = "kf/size"
+repo-url = "https://github.com/Keno/Unrolled.jl"
+uuid = "9602ed7d-8fef-5bc8-8597-8f21381861e8"
+version = "0.1.2+"
 
 [[VersionParsing]]
 deps = ["Compat"]
