@@ -66,3 +66,4 @@ tf_session(sess::TPUSession) = sess.sess
 tf_graph(sess) = tf_session(sess).graph
 
 job_name(sess::TPUSession) = sess.job_name
+

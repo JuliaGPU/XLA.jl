@@ -70,7 +70,7 @@ end
 
 # Include our TPUBatchNorm object
 include("tpu_batchnorm.jl")
-export map_to_tpu, TPUBatchNorm
+export map_to_tpu, map_to_cpu, TPUBatchNorm
 
 
 
@@ -91,20 +91,32 @@ map_to_tpu(x::Chain) = ImmutableChain(tuple(map(map_to_tpu, x.layers)...))
 # except for the "active" child, which is not used by the TPUBatchNorm
 map_to_tpu(x::Flux.BatchNorm) = TPUBatchNorm(map(map_to_tpu, Flux.children(x))[1:end-1]...)
 
+# We deal manually with recurrence, so Recur{T} values get turned into just T values
+map_to_tpu(x::Flux.Recur) = Flux.mapchildren(map_to_tpu, x.cell)
+
 # For all other objects, just map the children through `map_to_tpu`.
 map_to_tpu(x) = Flux.mapchildren(map_to_tpu, x)
 
 
+map_to_cpu(x) = Flux.mapchildren(map_to_cpu, x)
+map_to_cpu(x::XRTArray) = convert(Array, x)
+map_to_cpu(x::ImmutableChain) = Chain(map(map_to_cpu, x.layers)...)
+map_to_cpu(x::TPUBatchNorm) = Flux.BatchNorm(map(map_to_cpu, Flux.children(x))..., false)
+map_to_cpu(x::Flux.LSTMCell) = Flux.Recur(Flux.mapchildren(map_to_cpu, x))
 
 ## Layer reimplementations that need to know about XRTArray
 import NNlib: softmax, logsoftmax, ∇softmax, ∇logsoftmax
 import Flux: logitcrossentropy
-export logitcrossentropy, softmax, ∇softmax, logsoftmax, ∇logsoftmax
+export crossentropy, logitcrossentropy, softmax, ∇softmax, logsoftmax, ∇logsoftmax
 
 # Work around inference limitations to dynamically find the number of
 # batches held within a tensor.
 neg_nbatch(x) = XRTArray(Float32(-size(x, ndims(x))))
 Zygote.@nograd neg_nbatch
+
+function crossentropy(ŷ::XRTArray, y::XRTArray)
+    return sum(y .* log.(ŷ)) / neg_nbatch(y)
+end
 
 function logitcrossentropy(logŷ::XRTArray, y::XRTArray)
     return sum(y .* logsoftmax(logŷ)) / neg_nbatch(y)
