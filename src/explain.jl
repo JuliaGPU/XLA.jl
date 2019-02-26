@@ -65,7 +65,7 @@ function explain_suboptimal_inference(sig, bt=Base.StackFrame[])
     params = Core.Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true)
     methds = Base._methods_by_ftype(sig, 1, params.world)
     x = methds[1]
-    meth = Base.func_for_method_checked(x[3], sig.parameters[2:end])
+    meth = Base.func_for_method_checked(x[3], Tuple{sig.parameters[2:end]...})
     mi = Compiler.code_for_method(meth, sig, x[2], params.world)
     (ci, ty, slottypes) = typeinf_code_slottypes(mi, false, params)
     ir = Compiler.inflate_ir(ci, Compiler.spvals_from_meth_instance(mi),

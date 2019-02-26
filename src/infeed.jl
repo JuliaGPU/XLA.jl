@@ -11,9 +11,9 @@ function _make_infeed_op(sess, eltypes, sizes, inputs; device=nothing, device_or
     eq = tf.Tensor(tf.Operation(desc));
     eq
 end
-function make_infeed_op(sess, tup::NTuple{N, AbstractArray} where N; device_ordinal=0)
+function make_infeed_op(sess, tup::NTuple{N, AbstractArray} where N; device=nothing, device_ordinal=0)
     placeholders = [tf.placeholder(eltype(el), shape=size(el)) for el in tup]
-    eq = _make_infeed_op(sess, map(eltype, tup), map(size, tup), placeholders; device_ordinal=device_ordinal)
+    eq = _make_infeed_op(sess, map(eltype, tup), map(size, tup), placeholders; device=device, device_ordinal=device_ordinal)
     feeds = Dict((x=>y for (x, y) in zip(placeholders, tup))...)
     eq, feeds
 end
@@ -28,17 +28,17 @@ function make_outfeed_op(sess, tup::Type{<:NTuple}; device=nothing, device_ordin
     eq = tf.Tensor(tf.Operation(desc));
     eq
 end
-function infeed(sess, tup::NTuple{N, AbstractArray} where N)
-    eq, feeds = make_infeed_op(sess, tup)
+function infeed(sess, tup::NTuple{N, AbstractArray} where N; device=nothing)
+    eq, feeds = make_infeed_op(sess, tup; device=device)
     run(sess, eq, feeds)
 end
-function outfeed(sess, tup::Type{<:NTuple})
-    eq = make_outfeed_op(sess, tup)
+function outfeed(sess, tup::Type{<:NTuple}; device=nothing)
+    eq = make_outfeed_op(sess, tup; device=device)
     run(sess, eq)
 end
-function infeed_and_outfeed(infeed_tup::NTuple{N, AbstractArray} where N,
-        outfeed_tup::Type{<:NTuple})
-    eq_infeed, feeds = make_infeed_op(infeed_tup)
-    eq_outfeed = make_outfeed_op(outfeed_tup)
+function infeed_and_outfeed(sess, infeed_tup::NTuple{N, AbstractArray} where N,
+        outfeed_tup::Type{<:NTuple}; device=nothing)
+    eq_infeed, feeds = make_infeed_op(sess, infeed_tup; device=device)
+    eq_outfeed = make_outfeed_op(sess, outfeed_tup; device=device)
     run(sess, [eq_infeed, eq_outfeed], feeds)[2]
 end

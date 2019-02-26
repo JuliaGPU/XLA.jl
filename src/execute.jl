@@ -98,6 +98,11 @@ end
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg), typeof(init))
 end
 
+@noinline function (m::HloSort{fT})(f::fT, args...) where {fT}
+    rT = infer_rt(m, fT, map(typeof, args)...)
+    Base.invokelatest(dynamic_not_implemented, m)::rT
+end
+
 @noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::XRTArray, source::XRTArray, init::XRTArray) where {T,S}
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
 end

@@ -82,7 +82,11 @@ function Base.close(c::XRTCompilation)
     Core.setfield!(c, :h, -1)
 end
 
-function make_run_op(com::XRTCompilation, inputs...; device=com.device, config=XRTExecutionConfig())
+function make_default_execution_config()
+    return XRTExecutionConfig(rng_seed=rand(UInt32) | 0x01)
+end
+
+function make_run_op(com::XRTCompilation, inputs...; device=com.device, config=make_default_execution_config())
     iob = PipeBuffer();
     writeproto(iob, config)
     str = String(take!(iob))
@@ -123,10 +127,9 @@ mutable struct XRTAllocation
         finalizer(close, res)
         res
     end
-    global run
-    global _run
 
-    function _run(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
+    global _run
+    function _run(com::XRTCompilation, inputs...; config=make_default_execution_config())
         op = make_run_op(com, inputs...; config=config)
         h = run(com.sess, op, Dict())
         #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
@@ -135,19 +138,17 @@ mutable struct XRTAllocation
         res
     end
 
-    global _run_async
-    function _run_async(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
-        op = make_run_op(com, inputs...; config=config)
-        h = run(com.sess, op, Dict(); async=true)
+    global run
+    function run(com::XRTCompilation, inputs...; device=com.device, config=make_default_execution_config())
+        if typeof(device) <: DeviceIndex
+            device = tf_tpu_device(com.sess, device)
+        end
+        op = make_run_op(com, inputs...; device=device, config=config)
+        h = @GC.preserve inputs run(com.sess, op, Dict(); async=true)
         #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
-        res = @GC.preserve inputs new(com.sess, com.device, h)
+        res = new(com.sess, com.device, h)
         finalizer(close, res)
-        res
-    end
 
-    global run_async
-    function run_async(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
-        res = _run_async(com, inputs...; config=config)
         return if com.rt <: XRTArray
             T = convert(Type, XlaType(com.shape.result.element_type))
             dims = (com.shape.result.dimensions...,)
@@ -157,15 +158,39 @@ mutable struct XRTAllocation
         end
     end
 
-    function run(com::XRTCompilation, inputs...; config=XRTExecutionConfig())
-        res = _run(com, inputs...; config=config)
-        return if com.rt <: XRTArray
-            T = convert(Type, XlaType(com.shape.result.element_type))
-            dims = (com.shape.result.dimensions...,)
-            XRTArray{T, dims, length(dims)}(res)
-        else
-            XRTRemoteStruct{com.rt}(res)
-        end
+    global run_on_devices
+    function run_on_devices(compilation_handle, args...; devices=all_tpu_devices(compilation_handle.sess))
+		sess = compilation_handle.sess
+
+		# Helper functions to prepare an argument for sending to the TPU
+		prepare_arg(x::Number) = XRTArray(sess, x)
+		prepare_arg(x::AbstractArray) = XRTArray(sess, x)
+		prepare_arg(x::Tuple) = prepare_arg.(x)
+		prepare_arg(x) = XRTRemoteStruct(sess, x)
+
+		# For each TPU device
+		worker_ops = Any[]
+		for device in devices
+			# Prepare arguments
+			compilation_args = with_device(tf_tpu_device(sess, device)) do
+				# Drop `Val`'s because we don't need to pass those in
+				return prepare_arg.(filter(x -> !isa(x, Val), collect(args)))
+			end
+
+			# Place an XRT execute op on the device
+			push!(worker_ops, make_xrt_execute_on(device, compilation_handle, compilation_args...))
+		end
+
+        # Next, launch these worker ops
+        task = @async begin
+			rets = run(sess, worker_ops; async=true)
+
+			# Wrap rets as XRTAllocations, then as XRTRemoteStructs
+			rets = [new(sess, tf_tpu_device(sess, devices[idx]), rets[idx]) for idx in 1:length(devices)]
+			return XRTRemoteStruct{compilation_handle.rt}.(rets)
+		end
+
+        return task
     end
 end
 function Base.setproperty!(c::XRTAllocation, args...)

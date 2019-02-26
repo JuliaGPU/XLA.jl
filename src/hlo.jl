@@ -357,6 +357,16 @@ function fill_fields!(proto::HloInstructionProto, r::HloCrossReplicaSum)
     proto.cross_replica_sum_barrier = r.barrier
 end
 
+struct HloSort{fT} <: HloOp{:sort}
+    dimension::Int
+    is_stable::Bool
+end
+
+function fill_fields!(proto::HloInstructionProto, r::HloSort)
+    proto.dimensions = [r.dimension]
+    #proto.is_stable = r.is_stable
+end
+
 function HloInstructionProto(comp::HloComputationProto, opcode::String; id=make_id(), name=nothing)
     proto = HloInstructionProto(
         opcode=opcode,
@@ -370,7 +380,7 @@ end
 function shape_from_operands(op::HloOp, operands...)
     if isa(op, HloGetTupleElement)
         xshape = operands[1].shape.tuple_shapes[op.idx+1]
-    elseif isa(op, HloTuple)
+    elseif isa(op, Union{HloTuple, HloSort})
         xshape = Shape(
             element_type = xla.PrimitiveType.TUPLE,
             tuple_shapes = collect(op.shape for op in operands)
@@ -424,3 +434,7 @@ function HloInstructionProto(comp::HloComputationProto, op::HloOp, @nospecialize
     push!(comp.instructions, proto)
     proto
 end
+
+
+
+
