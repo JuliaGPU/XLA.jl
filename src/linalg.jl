@@ -400,15 +400,6 @@ function NNlib.∇meanpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(
     )(+, pdy, XRTArray(zero(eltype(x))))
 end
 
-function NNlib.softmax(xs::XRTArray)
-    ys = xs .- maximum(xs)
-    exp.(ys) ./ sum(exp.(ys))
-end
-function NNlib.∇softmax(Δ, xs::XRTArray)
-    s = sum(exp, xs, dims=1)
-    exp.(xs)./s.*(Δ .- sum(Δ .* exp.(xs), dims=1)./s)
-end
-
 @Base.pure dims_tuple(n) = tuple((0:n-1)...)
 @Base.pure rev_dims_tuple(n) = tuple((n-1:-1:0)...)
 dims_tuple(A, ::Colon) = dims_tuple(ndims(A))
