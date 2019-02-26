@@ -170,12 +170,14 @@ mutable struct XRTAllocation
 
 		# For each TPU device
 		worker_ops = Any[]
+		all_remote_handles = Any[compilation_handle]
 		for device in devices
 			# Prepare arguments
 			compilation_args = with_device(tf_tpu_device(sess, device)) do
 				# Drop `Val`'s because we don't need to pass those in
 				return prepare_arg.(filter(x -> !isa(x, Val), collect(args)))
 			end
+			push!(all_remote_handles, compilation_args)
 
 			# Place an XRT execute op on the device
 			push!(worker_ops, make_xrt_execute_on(device, compilation_handle, compilation_args...))
@@ -183,7 +185,7 @@ mutable struct XRTAllocation
 
         # Next, launch these worker ops
         task = @async begin
-			rets = run(sess, worker_ops; async=true)
+			rets = @GC.preserve all_remote_handles run(sess, worker_ops; async=true)
 
 			# Wrap rets as XRTAllocations, then as XRTRemoteStructs
 			rets = [new(sess, tf_tpu_device(sess, devices[idx]), rets[idx]) for idx in 1:length(devices)]
