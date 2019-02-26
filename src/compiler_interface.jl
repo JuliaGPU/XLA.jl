@@ -88,8 +88,9 @@ macro tpu_dump_file(file, expr)
 end
 
 make_options(sess::Session) = nothing
-function make_options(sess::TPUSession; devices=nothing)
-    devices === nothing ? nothing : sess.topology[devices]
+function make_options(;sess::TPUSession=global_session(), devices=nothing)
+    replica_device_coords = devices === nothing ? nothing : sess.topology[devices]
+    (sess, replica_device_coords)
 end
 
 macro tpu_compile(args...)
@@ -103,16 +104,16 @@ macro tpu_compile(args...)
             return Expr(:call, :error, "@tpu_compile expects only one non-keyword argument")
         end
     end
-    opts = Expr(:call, make_options, esc(:sess),
+    opts = Expr(:call, make_options,
             (Expr(:kw, esc(kw.args[1]), esc(kw.args[2])) for kw in kwargs)...)
     @assert isexpr(expr, :call)
     quote
         let f = $(esc(expr.args[1]))
             argtypes = Base.typesof($(map(esc, expr.args[2:end])...))
             ir, sv = code_typed_xla(f, argtypes)
-            replica_device_coords = $opts
+            sess, replica_device_coords = $opts
             try
-                XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv; replica_device_coords=replica_device_coords)...)
+                XLA.compile(sess, XLA.compile_to_xla(ir, sv; replica_device_coords=replica_device_coords)...)
             catch err
                 @warn("Compilation failed; attempting to explain suboptimal inference:")
                 XLA.explain_suboptimal_inference(Tuple{typeof(f), argtypes.parameters...})

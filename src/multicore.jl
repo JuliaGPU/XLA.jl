@@ -67,3 +67,29 @@ tf_graph(sess) = tf_session(sess).graph
 
 job_name(sess::TPUSession) = sess.job_name
 
+# Global session management
+let sess = nothing
+    global global_session, initialize!, set_global_session!
+    function try_initialize_from_env!()
+        if haskey(ENV, "COLAB_TPU_ADDR")
+            set_global_session!(TPUSession(ENV["COLAB_TPU_ADDR"]))
+        elseif haskey(ENV, "COLAB_GPU")
+            @warn "Running on Colab, but TPU address is not set. Did you select the TPU accelerator option?"
+        end
+    end
+    function global_session()
+        if sess === nothing
+            try_initialize_from_env!()
+        end
+        sess === nothing && error("Global TPU session not initialized. Call XLA.initialize!(endpoint) or pass an active session directly.")
+        sess
+    end
+    function set_global_session!(new_sess::TPUSession)
+        sess = new_sess
+    end
+    function initialize!(endpoint; reset=false)
+        (!reset && sess !== nothing) &&
+            error("Cowardly refusing to override existing session. Use reset=true to force.")
+        set_global_session!(TPUSession(endpoint))
+    end
+end
