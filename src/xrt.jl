@@ -58,7 +58,7 @@ function Base.setproperty!(c::XRTCompilation, args...)
 end
 
 function Base.close(c::XRTCompilation)
-    if c.sess.ptr == C_NULL
+    if tf_session(c.sess).ptr == C_NULL
         # The session was closed so our resources are already freed
         Core.setfield!(c, :h, -1)
         return
@@ -200,7 +200,7 @@ end
 const tf = TensorFlow
 global counter = 0
 function Base.close(c::XRTAllocation)
-     if c.sess.ptr == C_NULL
+     if tf_session(c.sess).ptr == C_NULL
         # The session was closed so our resources are already freed
         Core.setfield!(c, :h, -1)
         return
@@ -208,11 +208,11 @@ function Base.close(c::XRTAllocation)
     #ccall(:jl_, Cvoid, (Any,), "Start Releasing allocation $(c.h)")
     global counter
     counter += 1
-    desc = tf.NodeDescription(c.sess.graph, "Const", "ReleaseAllocationHandle$(counter)/Const")
+    desc = tf.NodeDescription(tf_graph(c.sess), "Const", "ReleaseAllocationHandle$(counter)/Const")
     desc["value"] = TensorFlow.RawTensor(c.h)
     desc["dtype"] = typeof(c.h)
     cc = tf.Tensor(tf.Operation(desc))
-    desc2 = tf.NodeDescription(c.sess.graph, "XRTReleaseAllocationHandle", "ReleaseAllocationHandle$(counter)")
+    desc2 = tf.NodeDescription(tf_graph(c.sess), "XRTReleaseAllocationHandle", "ReleaseAllocationHandle$(counter)")
     tf.add_input(desc2, cc)
     c.device !== nothing && tf.set_device(desc2, c.device)
     #ccall(:jl_, Cvoid, (Any,), "Releasing allocation $(c.h)")
