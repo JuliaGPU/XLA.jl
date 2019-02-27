@@ -58,6 +58,12 @@ try
             f_getidx(from, idxs)
     end
     
+    arr = Float32[1.0 2.0; 3.0 4.0]
+    f(A) = repeat(arr, 2, 2)
+    let compld = @tpu_compile f(arr)
+        @test convert(Array, run(compld, XRTArray(arr))) == f(arr)
+    end
+
 finally
     GC.gc() # Try running finalizers, before the process exits
     close(sess)

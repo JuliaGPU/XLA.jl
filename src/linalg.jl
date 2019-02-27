@@ -650,3 +650,15 @@ end
 function Base._dropdims(A::XRTArray, dims::Base.Dims)
     reshape(A, compute_dropdims_d(typeof(A), dims))
 end
+
+@Base.pure function make_repeat_dims(sz, rep_dims)
+    dim_mapping = tuple((2*i+1 for i = 0:length(sz)-1)...)
+    result_szs = tuple(Iterators.flatten(zip(rep_dims, sz))...)
+    final_sz = tuple((a*b for (a,b) in zip(rep_dims, sz))...)
+    dim_mapping, result_szs, final_sz
+end
+
+function Base.repeat(A::XRTArray, dims::Integer...)
+    dims_mapping, result_szs, final_sz = make_repeat_dims(size(A), dims)
+    XLA.HloReshape(final_sz)(XLA.HloBroadcast(dims_mapping, result_szs)(A))
+end
