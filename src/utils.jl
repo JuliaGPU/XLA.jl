@@ -150,7 +150,7 @@ end
 
 Base.rand(::Type{XRTArray{T}}, shape::Int...) where {T} = XLA.HloRng(T, shape, 1)(XRTArray(typemin(T)),XRTArray(typemax(T)))
 Base.rand(::Type{XRTArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(F, shape, 1)(XRTArray(0.0f0),XRTArray(1.0f0))
-Base.randn(::Type{XRTArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(T, shape, 2)(XRTArray(0.0f0),XRTArray(1.0f0))
+Base.randn(::Type{XRTArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(F, shape, 2)(XRTArray(0.0f0),XRTArray(1.0f0))
 
 # Shuffle by repeatedly sorting x with a random vector as the sorting key.
 # see https://github.com/tensorflow/tensorflow/blob/85deaa11cae878ba2c0e5284085956f75434b5b2/tensorflow/compiler/tf2xla/kernels/random_ops.cc#L83-L143 for more
@@ -164,4 +164,3 @@ function shuffle(x::XRTArray)
     end
     return x
 end
-
