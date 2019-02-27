@@ -60,8 +60,12 @@ try
     
     arr = Float32[1.0 2.0; 3.0 4.0]
     f(A) = repeat(arr, 2, 2)
-    let compld = @tpu_compile f(arr)
+    let compld = @tpu_compile f(XRTArray(arr))
         @test convert(Array, run(compld, XRTArray(arr))) == f(arr)
+    end
+    vec = Float32[1.0 2.0]
+    let compld = @tpu_compile f(XRTArray(vec))
+        @test convert(Array, run(compld, XRTArray(vec))) == f(vec)
     end
 
 finally

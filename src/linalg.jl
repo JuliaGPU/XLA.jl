@@ -2,9 +2,9 @@ function Base.:*(A::XRTArray, B::XRTArray)
     ddots = DimNums((1,), (0,), (), ())
     HloDot(ddots)(A, B)
 end
-function Base.:*(A::XRTArray, B::XRTVector)
+function Base.:*(A::XRTVector, B::XRTArray)
     ddots = DimNums((1,), (0,), (), ())
-    HloDot(ddots)(A, B)
+    HloDot(ddots)(HloReshape((length(A), 1))(A), B)
 end
 Base.:*(A::XRTArray{<:Any, (), 0}, B::XRTVector) = broadcast(*, A, B)
 
@@ -240,7 +240,7 @@ function Broadcast.copy(bc::Broadcast.Broadcasted{<:XRTArrayStyle})
         return HloMap{Core.Typeof(bc′.f)}()(bc′.f, args...)
     end
     # TODO: Pull back CPU, do this there
-    error("No hope")
+    error("No hope $(bc.f) $(typeof(bc.args)) $(ElType)")
 end
 
 using NNlib
@@ -623,7 +623,7 @@ Base.cat(a::XRTArray...; dims) = _cat(dims, a...)
 
 using Statistics
 @Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims) = prod(size(T)[[dims...]])
-@Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims::Colon) = prod(size(T)[[dims]])
+@Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims::Colon) = prod(size(T))
 dimsum(A, dims) = sum(A; dims=dims)
 function Statistics.mean(A::XRTArray; dims=:)
     summed = dimsum(A, dims)
@@ -653,6 +653,7 @@ function Base._dropdims(A::XRTArray, dims::Base.Dims)
 end
 
 @Base.pure function make_repeat_dims(sz, rep_dims)
+    padded_sz = ntuple(i->i <= length(sz) ? sz[i] : 1, length(rep_dims))
     dim_mapping = tuple((2*i+1 for i = 0:length(sz)-1)...)
     result_szs = tuple(Iterators.flatten(zip(rep_dims, sz))...)
     final_sz = tuple((a*b for (a,b) in zip(rep_dims, sz))...)
