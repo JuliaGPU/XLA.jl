@@ -623,6 +623,7 @@ Base.cat(a::XRTArray...; dims) = _cat(dims, a...)
 
 using Statistics
 @Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims) = prod(size(T)[[dims...]])
+@Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims::Colon) = prod(size(T)[[dims]])
 dimsum(A, dims) = sum(A; dims=dims)
 function Statistics.mean(A::XRTArray; dims=:)
     summed = dimsum(A, dims)
