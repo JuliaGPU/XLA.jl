@@ -39,6 +39,10 @@ for (M, f, arity) in DiffRules.diffrules()
   @eval begin
     @adjoint $M.$f(a::XRTScalar, b::XRTScalar) = $M.$f(a, b),
       Δ -> (Δ * $da, Δ * $db)
+    @adjoint $M.$f(a::Number, b::XRTScalar) = $M.$f(a, b),
+      Δ -> (Δ * $da, Δ * $db)
+    @adjoint $M.$f(a::XRTScalar, b::Number) = $M.$f(a, b),
+      Δ -> (Δ * $da, Δ * $db)
   end
 end
 
@@ -64,3 +68,32 @@ end
 @adjoint function getindex(xs::XRTArray, i...)
     xs[i...], getindex_back{typeof(xs), typeof(i)}(i)
 end
+
+@Base.pure function make_repeat_adjoint_window(folded_sz, dims_mapping)
+    window = ntuple(length(folded_sz)) do i
+        if (i - 1) in dims_mapping
+            WindowDims(1, 1, 0, 0, 1, 1, false)
+        else
+            WindowDims(folded_sz[i], 1, 0, 0, 1, 1, false)
+        end
+    end
+end
+
+unval(v::Val{x}) where {x} = x
+
+@adjoint function Base.repeat(A::XRTArray, dims::Integer...)
+    repeat(A, dims...), let Asz=Val(size(A)), vdims=Val(dims)
+        function (Δ)
+            sz_A = unval(Asz)
+            ddims = unval(vdims)
+            dims_mapping, result_szs, final_sz = make_repeat_dims(sz_A, ddims)
+            folded_back = XLA.HloReshape(result_szs)(Δ)
+            summed = HloReduceWindow{typeof(+)}(
+                make_repeat_adjoint_window(result_szs, dims_mapping)
+            )(+, folded_back, XRTArray(typemin(eltype(x))))
+            HloReshape(sz_A)(summed)
+        end
+    end
+end
+
+@Zygote.nograd count_summands

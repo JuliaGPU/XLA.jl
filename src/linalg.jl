@@ -655,8 +655,8 @@ end
 @Base.pure function make_repeat_dims(sz, rep_dims)
     padded_sz = ntuple(i->i <= length(sz) ? sz[i] : 1, length(rep_dims))
     dim_mapping = tuple((2*i+1 for i = 0:length(sz)-1)...)
-    result_szs = tuple(Iterators.flatten(zip(rep_dims, sz))...)
-    final_sz = tuple((a*b for (a,b) in zip(rep_dims, sz))...)
+    result_szs = tuple(Iterators.flatten(zip(rep_dims, padded_sz))...)
+    final_sz = tuple((a*b for (a,b) in zip(rep_dims, padded_sz))...)
     dim_mapping, result_szs, final_sz
 end
 
