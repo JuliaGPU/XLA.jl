@@ -7,8 +7,38 @@ using Zygote: @adjoint
 
 ForwardDiff.can_dual(::Type{XRTArray{T,(),0}} where T) = true
 Zygote.isscalar(::XRTArray{<:Any,(),0}) = true
-Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v) where {T, dims, N} =
-    HloBroadcast((), dims)(convert(XRTArray{T, (), 0}, v))
+
+fill_similar_array(x::XRTArray{T, dims, N}, v::XRTScalar) where {T, dims, N} =
+    HloBroadcast((), dims)(v)
+fill_similar_array(x::XRTArray{T, dims, N}, v::XLAScalar) where {T, dims, N} =
+    Zygote.fill_similar_array(x, convert(XRTArray{T, (), 0}, v))
+
+sum_adjoint(xs::XRTArray, dims::Colon) = sum(xs), Δ->(fill_similar_array(xs, Δ),)
+@Base.pure function compute_sum_adj_dims(sz, dim)
+    a = Int[]
+    b = Int[]
+    for i = 0:length(sz)-1
+        if i + 1 == dim
+            # omit it from both
+        else
+            push!(a, sz[i + 1])
+            push!(b, i)
+        end
+    end
+    tuple(a...), tuple(b...)
+end
+function sum_adjoint(xs::XRTArray{<:Any, rt_dims}, dim::Int) where rt_dims
+    sum(xs, dims=dim), let vdim=Val(dim)
+        Δ -> begin
+            dims_dropped, all_but_dim = compute_sum_adj_dims(size(Δ), unval(vdim))
+            (HloBroadcast(all_but_dim, rt_dims)(HloReshape(dims_dropped)(Δ)),)
+        end
+    end
+end
+
+@adjoint function sum(xs::XRTArray; dims = :)
+  sum_adjoint(xs, dims)
+end
 
 using Base.Broadcast
 using Base.Broadcast: Broadcasted, materialize
@@ -90,8 +120,8 @@ unval(v::Val{x}) where {x} = x
             folded_back = XLA.HloReshape(result_szs)(Δ)
             summed = HloReduceWindow{typeof(+)}(
                 make_repeat_adjoint_window(result_szs, dims_mapping)
-            )(+, folded_back, XRTArray(typemin(eltype(x))))
-            HloReshape(sz_A)(summed)
+            )(+, folded_back, XRTArray(zero(eltype(Δ))))
+            (HloReshape(sz_A)(summed), ntuple(_->nothing, length(ddims))...)
         end
     end
 end
