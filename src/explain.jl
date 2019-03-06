@@ -99,7 +99,7 @@ function explain_suboptimal_inference(sig, bt=Base.StackFrame[])
                         Base.show_backtrace(stdout, reverse(bt))
                         return
                     end
-                    printstyled("Unkown destructuring.", color=:bold)
+                    printstyled("Unknown destructuring.", color=:bold)
                     Base.show_backtrace(stdout, reverse(bt))
                     return
                 end
