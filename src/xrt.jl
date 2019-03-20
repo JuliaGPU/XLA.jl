@@ -91,7 +91,7 @@ function make_run_op(com::XRTCompilation, inputs...; device=com.device, config=m
     writeproto(iob, config)
     str = String(take!(iob))
     op = as_default(tf_graph(com.sess)) do
-        handles = map(x->gethandle!(com.sess, x), inputs)
+        handles = map(x->gethandle!(com.sess, x), Iterators.filter(x->representable(typeof(x)), inputs))
         # Make sure everything is on the same device
         @assert all(input->input.device == device, handles)
         str = TensorFlow.constant(str)

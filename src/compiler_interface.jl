@@ -123,13 +123,13 @@ macro tpu_compile(args...)
     end
 end
 
-macro tpu(expr)
+
+macro tpu(args...)
+    expr = args[end]
     @assert isexpr(expr, :call)
     quote
-        let f = $(esc(:(()->($expr))))
-            ir, sv = code_typed_xla(f, Tuple{})
-            compld = XLA.compile($(esc(:sess)), XLA.compile_to_xla(ir, sv)...)
-            run(compld)
-        end
+        the_args = tuple($(map(esc,expr.args)...))
+        handle = @tpu_compile $(args[1:end-1]...) $(Expr(:call, (Expr(:call, getfield, :the_args, i) for i = 1:length(expr.args))...))
+        run(handle, the_args...)
     end
 end
