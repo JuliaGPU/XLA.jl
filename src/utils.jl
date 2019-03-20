@@ -71,6 +71,7 @@ end
 # Include our TPUBatchNorm object
 include("tpu_batchnorm.jl")
 export map_to_tpu, map_to_cpu, TPUBatchNorm, tpu
+function map_to_tpu end
 const tpu = map_to_tpu
 
 ## Mapping utilities
