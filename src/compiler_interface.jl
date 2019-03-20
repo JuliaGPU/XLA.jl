@@ -93,6 +93,9 @@ function make_options(;sess::TPUSession=global_session(), devices=nothing)
     (sess, replica_device_coords)
 end
 
+adjust_type(T) = T
+adjust_type(::Type{XRTRemoteStruct{T}}) where {T} = T
+
 macro tpu_compile(args...)
     expr = args[end] # The expression to compile
     kwargs = Expr[]
@@ -109,7 +112,7 @@ macro tpu_compile(args...)
     @assert isexpr(expr, :call)
     quote
         let f = $(esc(expr.args[1]))
-            argtypes = Base.typesof($(map(esc, expr.args[2:end])...))
+            argtypes = Tuple{map(adjust_type, Base.typesof($(map(esc, expr.args[2:end])...)).parameters)...}
             ir, sv = code_typed_xla(f, argtypes)
             sess, replica_device_coords = $opts
             try
