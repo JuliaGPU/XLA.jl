@@ -70,9 +70,8 @@ end
 
 # Include our TPUBatchNorm object
 include("tpu_batchnorm.jl")
-export map_to_tpu, map_to_cpu, TPUBatchNorm
-
-
+export map_to_tpu, map_to_cpu, TPUBatchNorm, tpu
+const tpu = map_to_tpu
 
 ## Mapping utilities
 # Convert scalars to single-element XRTArrays with eltype Float32:
