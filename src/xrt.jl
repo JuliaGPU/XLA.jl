@@ -133,7 +133,7 @@ mutable struct XRTAllocation
         op = make_run_op(com, inputs...; config=config)
         h = run(com.sess, op, Dict())
         #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
-        res = @GC.preserve inputs new(com.sess, com.device, h)
+        res = @GC.preserve com inputs new(com.sess, com.device, h)
         finalizer(close, res)
         res
     end
@@ -144,7 +144,7 @@ mutable struct XRTAllocation
             device = tf_tpu_device(com.sess, device)
         end
         op = make_run_op(com, inputs...; device=device, config=config)
-        h = @GC.preserve inputs run(com.sess, op, Dict(); async=true)
+        h = @GC.preserve com inputs run(com.sess, op, Dict(); async=true)
         #ccall(:jl_, Cvoid, (Any,), "Got allocation $(h)")
         res = new(com.sess, com.device, h)
         finalizer(close, res)
