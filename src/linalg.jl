@@ -130,7 +130,7 @@ Base.one(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(one(T))
 Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
 Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
-    
+
 for (fname, hlo) in (
         (:exp, :exponential),
         (:sin, :sine),
@@ -243,6 +243,7 @@ function Broadcast.copy(bc::Broadcast.Broadcasted{<:XRTArrayStyle})
     error("No hope $(bc.f) $(typeof(bc.args)) $(ElType)")
 end
 
+#=
 using NNlib
 
 @Base.pure function conv_windows(sz_, pad_, stride_, dilation_)
@@ -476,14 +477,14 @@ function Base.setindex(A::XRTVector{T}, v::XRTArray{T, (), 0}, i::XRTArray{<:Int
 end
 Base.setindex(A::XRTVector, v, i::Int64) = Base.setindex(A, v, XRTArray{Int64, (), 0}(i))
 
-# TODO: Support trailing singleton 
+# TODO: Support trailing singleton
 @Base.pure start_idxs_tuple(rs) = ntuple(i->isa(rs[i], Colon) ? 0 : first(rs[i]) - 1, Val(length(rs)))
 function Base.setindex(A::XRTArray{T,<:Any,N}, up::XRTArray{T,<:Any,N}, rs::Vararg{Union{UnitRange{<:Integer}, Colon}, N}) where {T, N}
     inds = map(x->HloBroadcast((), (1,))(XRTArray(x)), start_idxs_tuple(rs))
     HloDynamicUpdateSlice()(A, up, HloConcatenate(0)(inds...))
 end
 
-@Base.pure function compute_result_size(tA, tInds) 
+@Base.pure function compute_result_size(tA, tInds)
     map(i->size(tA, i),
         tuple(Iterators.filter(
             i->tInds.parameters[i] <: Colon, 1:length(tInds.parameters))...))
@@ -664,3 +665,4 @@ function Base.repeat(A::XRTArray, dims::Integer...)
     dims_mapping, result_szs, final_sz = make_repeat_dims(size(A), dims)
     XLA.HloReshape(final_sz)(XLA.HloBroadcast(dims_mapping, result_szs)(A))
 end
+=#

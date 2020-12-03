@@ -6,12 +6,12 @@ using NaNMath
 using Zygote: @adjoint
 
 ForwardDiff.can_dual(::Type{XRTArray{T,(),0}} where T) = true
-Zygote.isscalar(::XRTArray{<:Any,(),0}) = true
+#Zygote.isscalar(::XRTArray{<:Any,(),0}) = true
 
-Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v::XRTScalar) where {T, dims, N} =
-    HloBroadcast((), dims)(v)
-Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v::XLAScalar) where {T, dims, N} =
-    Zygote.fill_similar_array(x, convert(XRTArray{T, (), 0}, v))
+#Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v::XRTScalar) where {T, dims, N} =
+#    HloBroadcast((), dims)(v)
+#Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v::XLAScalar) where {T, dims, N} =
+#    Zygote.fill_similar_array(x, convert(XRTArray{T, (), 0}, v))
 
 sum_adjoint(xs::XRTArray, dims::Colon) = sum(xs), Δ->(Zygote.fill_similar_array(xs, Δ),)
 @Base.pure function compute_sum_adj_dims(sz, dim)
@@ -42,6 +42,8 @@ end
 
 using Base.Broadcast
 using Base.Broadcast: Broadcasted, materialize
+
+#=
 function Zygote.broadcast_gradient(bc::Broadcasted{S}, ::Type{T}) where {S <: XLA.XLA.XRTArrayStyle, T}
     # XLA doesn't currently have multi-output kMap
     dest = let f = bc.f
@@ -54,6 +56,7 @@ function Zygote.broadcast_gradient(bc::Broadcasted{S}, ::Type{T}) where {S <: XL
     end
     dest, grads
 end
+=#
 
 for (M, f, arity) in DiffRules.diffrules()
   arity == 1 || continue
@@ -126,4 +129,4 @@ unval(v::Val{x}) where {x} = x
     end
 end
 
-@Zygote.nograd count_summands
+#@Zygote.nograd count_summands

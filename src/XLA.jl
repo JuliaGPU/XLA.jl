@@ -1,6 +1,5 @@
 module XLA
     using ProtoBuf
-    using TensorFlow
 
     import Base: run
 
@@ -15,9 +14,14 @@ module XLA
     const ProgramShape = ProgramShapeProto
 
     include("literal.jl")
-    include("xrt.jl")
+
+    struct XRTAllocation
+    end
+
+    #include("xrt.jl")
+    include("xrtarray.jl")
     include("topology.jl")
-    include("multicore.jl")
+    #include("multicore.jl")
     include("hlo.jl")
     include("shape_infer.jl")
     include("execute.jl")
@@ -29,8 +33,8 @@ module XLA
     include("compiler_interface.jl")
     include("utils.jl")
     include("grad.jl")
-    include("infeed.jl")
-    include("flux.jl")
+    #include("infeed.jl")
+    #include("flux.jl")
 
     function regen_proto()
         tf_path = "/home/keno/tensorflow/tensorflow/"
@@ -47,17 +51,4 @@ module XLA
     export TPUSession, all_tpu_devices
 
     export @tpu_compile, @tpu_dump, @tpu
-
-    function __init__()
-        TensorFlow.import_op("XRTCompile")
-        TensorFlow.import_op("XRTExecute")
-        TensorFlow.import_op("XRTAllocate")
-        TensorFlow.import_op("XRTReadLiteral")
-        TensorFlow.import_op("XRTReadLiteralAndRelease")
-        TensorFlow.import_op("XRTReleaseAllocationHandle")
-        TensorFlow.import_op("XRTReleaseCompilationHandle")
-        TensorFlow.import_op("ConfigureDistributedTPU")
-        TensorFlow.import_op("ShutdownDistributedTPU")
-    end
-
 end

@@ -87,11 +87,13 @@ macro tpu_dump_file(file, expr)
     end
 end
 
-make_options(sess::Session) = nothing
+#make_options(sess::Session) = nothing
+#=
 function make_options(;sess::TPUSession=global_session(), devices=nothing)
     replica_device_coords = devices === nothing ? nothing : sess.topology[devices]
     (sess, replica_device_coords)
 end
+=#
 
 adjust_type(T) = T
 adjust_type(::Type{XRTRemoteStruct{T}}) where {T} = T

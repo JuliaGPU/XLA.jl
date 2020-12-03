@@ -7,8 +7,8 @@ end
 
 ImmutableChain(x, y, xs...) = ImmutableChain((x, y, xs...))
 
-Flux.children(c::ImmutableChain) = c.layers
-Flux.mapchildren(f, c::ImmutableChain) = ImmutableChain(f.(c.layers))
+#Flux.children(c::ImmutableChain) = c.layers
+#Flux.mapchildren(f, c::ImmutableChain) = ImmutableChain(f.(c.layers))
 
 applyall(::Tuple{}, x) = x
 applyall(fs::Tuple, x) = applyall(Base.tail(fs), first(fs)(x))
@@ -82,7 +82,7 @@ map_to_tpu(x::Real) = XRTArray(convert(Float32, x))
 map_to_tpu(x::AbstractArray) = XRTArray(Float32.(x))
 
 # Strip off the TrackedArray coating to get at the data underneath
-map_to_tpu(x::TrackedArray) = map_to_tpu(Flux.data(x))
+#map_to_tpu(x::TrackedArray) = map_to_tpu(Flux.data(x))
 
 # Turn Chain objects into ImmutableChain objects which store the computation within their type signature
 map_to_tpu(x::Chain) = ImmutableChain(tuple(map(map_to_tpu, x.layers)...))
