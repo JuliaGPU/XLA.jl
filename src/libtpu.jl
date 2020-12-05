@@ -202,6 +202,7 @@
 =#
 
 using Base.Meta
+using Artifacts
 
 macro new_with_finalizer(new_sym)
     if isa(new_sym, Symbol)
@@ -219,7 +220,7 @@ macro new_with_finalizer(new_sym)
     end)
 end
 
-const libtpu = "/lib/libtpu.so"
+const libtpu = artifact"libtpu/libtpu.so"
 
 let initialized = false
     global initialize_tpu_runtime

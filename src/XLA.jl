@@ -22,26 +22,27 @@ module XLA
     include("xrtarray.jl")
     include("topology.jl")
     #include("multicore.jl")
+    include("libtpu.jl")
     include("hlo.jl")
     include("shape_infer.jl")
     include("execute.jl")
     include("emulate.jl")
     include("linalg.jl")
-    include("explain.jl")
-    include("compiler.jl")
-    include("compiler_passes.jl")
-    include("compiler_interface.jl")
-    include("utils.jl")
-    include("grad.jl")
+    #include("explain.jl")
+    #include("compiler.jl")
+    #include("compiler_passes.jl")
+    #include("compiler_interface.jl")
+    #include("utils.jl")
+    #include("grad.jl")
     #include("infeed.jl")
     #include("flux.jl")
 
     function regen_proto()
         tf_path = "/home/keno/tensorflow/tensorflow/"
         xrt_proto = tf_path * "compiler/xrt/xrt.proto"
-        topo_proto = tf_path * "contrib/tpu/proto/topology.proto"
+        #topo_proto = tf_path * "contrib/tpu/proto/topology.proto"
         cd(@__DIR__) do
-            run(ProtoBuf.protoc(`-I=/home/keno/tensorflow/ --julia_out=gen $xrt_proto $topo_proto`))
+            run(ProtoBuf.protoc(`-I=/home/keno/tensorflow/ --julia_out=gen $xrt_proto`))
         end
     end
 
