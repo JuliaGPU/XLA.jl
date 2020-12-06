@@ -1,7 +1,7 @@
 using Pkg, JSON, HTTP, Tar, Artifacts
 
 const Artifacts_toml = joinpath(@__DIR__, "../Artifacts.toml")
-const libtpu_tag = "libtpu_20201204_RC00"
+const libtpu_tag = "libtpu_20201205_RC00"
 
 let libtpu_hash = Artifacts.artifact_hash("libtpu", Artifacts_toml)
     if !Artifacts.artifact_exists(libtpu_hash)
@@ -22,7 +22,7 @@ let libtpu_hash = Artifacts.artifact_hash("libtpu", Artifacts_toml)
             end
         end
         if new_hash !== libtpu_hash
-            error("Download of libtpu docker image did not yield artifact with correct hash.")
+            error("Download of libtpu docker image did not yield artifact with correct hash. New hash is `$(new_hash)`.")
         end
     end
 end

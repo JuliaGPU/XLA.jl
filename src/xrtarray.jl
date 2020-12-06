@@ -128,8 +128,7 @@ function Shape(XLAT::XlaType, SHP::Tuple)
         dimensions = Int64[SHP...],
         layout = Layout(
             format = Format.DENSE,
-            minor_to_major = perm .- 1,
-            max_sparse_elements = 0
+            minor_to_major = perm .- 1
         )
     )
 end

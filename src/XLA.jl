@@ -9,8 +9,8 @@ module XLA
     include(joinpath(dirname(@__FILE__), "gen","xrt.jl"))
     using .xrt
     using .xla
-    using .tensorflow.tpu
     const Shape = ShapeProto
+    const Layout = LayoutProto
     const ProgramShape = ProgramShapeProto
 
     include("literal.jl")
@@ -20,7 +20,7 @@ module XLA
 
     #include("xrt.jl")
     include("xrtarray.jl")
-    include("topology.jl")
+    #include("topology.jl")
     #include("multicore.jl")
     include("libtpu.jl")
     include("hlo.jl")

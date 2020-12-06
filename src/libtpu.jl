@@ -226,7 +226,8 @@ let initialized = false
     global initialize_tpu_runtime
     function initialize_tpu_runtime()
         if !initialized
-            ccall((:TfTpu_Initialize, libtpu), Cvoid, (Bool,), true)
+            args = []
+            ccall((:TfTpu_Initialize, libtpu), Cvoid, (Bool, Cint, Ptr{Cstring}), true, length(args), args)
             initialized = true
         end
     end
@@ -284,6 +285,17 @@ mutable struct TpuExecutor
     end
 end
 
+struct SE_DeviceMemoryBase
+    opaque::Ptr{Cvoid}
+    size::UInt64
+    payload::UInt64
+end
+
+
+function allocate!(e::TpuExecutor, size::UInt64, memory_space::Int64)
+    @ccall libtpu.TpuExecutor_Allocate(e::Ptr{Cvoid}, size::UInt64, memory_space::Int64)::SE_DeviceMemoryBase
+end
+
 mutable struct SEDeviceOptions
     handle::Ptr{Cvoid}
     function SEDeviceOptions(flags::Cuint)
@@ -309,12 +321,6 @@ struct SEStreamExecutorList
     count::Cint
 end
 
-struct SE_DeviceMemoryBase
-    opaque::Ptr{Cvoid}
-    size::UInt64
-    payload::UInt64
-end
-
 struct SE_ScopedDeviceMemory
     wrapped::SE_DeviceMemoryBase
     device_ordinal::Cint
@@ -323,7 +329,10 @@ end
 function device_allocate(ctx::Ptr{Cvoid}, device_ordinal::Cint, size::UInt64,
     retry_on_failure::Bool, memory_space::Int64, result::Ptr{SE_ScopedDeviceMemory},
     status::Ptr{Cvoid})
-    error("Unimplemented")
+    executor = unsafe_pointer_to_objref(ctx)::TpuExecutor
+    mem = allocate!(executor, size, memory_space)
+    unsafe_store!(result, SE_ScopedDeviceMemory(mem, device_ordinal))
+    nothing
 end
 
 function device_deallocate(ctx::Ptr{Cvoid}, base::Ptr{SE_ScopedDeviceMemory},
@@ -331,26 +340,25 @@ function device_deallocate(ctx::Ptr{Cvoid}, base::Ptr{SE_ScopedDeviceMemory},
     error("Unimplemented")
 end
 
-mutable struct SEDeviceMemoryAllocator
+struct SEDeviceMemoryAllocator
     platform::Ptr{Cvoid}
     ctx::Ptr{Cvoid}
     AllocateFn::Ptr{Cvoid}
     DeallocateFn::Ptr{Cvoid}
 
     # roots
-    _platform::TpuPlatform
+    # _platform::TpuPlatform
 
-    function SEDeviceMemoryAllocator(platform::TpuPlatform)
+    function SEDeviceMemoryAllocator(platform::TpuPlatform, executor::TpuExecutor)
         new(
             Base.unsafe_convert(Ptr{Cvoid}, platform),
-            C_NULL,
+            pointer_from_objref(executor),
             @cfunction(device_allocate, Cvoid, (Ptr{Cvoid}, Cint, UInt64, Bool, Int64, Ptr{SE_ScopedDeviceMemory}, Ptr{Cvoid})),
             @cfunction(device_deallocate, Cvoid, (Ptr{Cvoid}, Cint, UInt64, Bool, Int64, Ptr{SE_ScopedDeviceMemory}, Ptr{Cvoid})),
         )
     end
 end
-Base.unsafe_convert(::Type{Ptr{SEDeviceMemoryAllocator}}, x::SEDeviceMemoryAllocator) =
-    Ptr{SEDeviceMemoryAllocator}(pointer_from_objref(x))
+Base.cconvert(::Type{Ptr{SEDeviceMemoryAllocator}}, x::SEDeviceMemoryAllocator) = Ref(x)
 
 mutable struct TpuExecutable
     handle::Ptr{Cvoid}
@@ -358,6 +366,13 @@ mutable struct TpuExecutable
         @new_with_finalizer(begin
             handle
         end)
+    end
+end
+
+mutable struct TpuStream
+    handle::Ptr{Cvoid}
+    function TpuStream(parent::TpuExecutor)
+        @new_with_finalizer(@ccall libtpu.TpuStream_New(parent::Ptr{Cvoid})::Ptr{Cvoid})
     end
 end
 
@@ -440,7 +455,7 @@ function run_backend!(compiler::TpuCompiler, mod::XLA.HloModuleProto,
             TpuSerializedProto(Base.unsafe_convert(Ptr{UInt8}, module_serialized), sizeof(module_serialized)),
             XLA_HloModuleConfig(
             0, 1, 1, 0, true, false, TpuSerializedProto(), true,
-            XLA_ComputationLayout(0, C_NULL, XLA_Shape(0, Int64List(), BoolList(),
+            XLA_ComputationLayout(0, C_NULL, XLA_Shape(11, Int64List(), BoolList(),
             C_NULL, 0, XLA_Layout())))
         ))
         result = Ref{Ptr{Cvoid}}()
@@ -451,6 +466,42 @@ function run_backend!(compiler::TpuCompiler, mod::XLA.HloModuleProto,
                 result::Ptr{Ptr{Cvoid}}, s::Ptr{Cvoid})::Cvoid
         end
         return TpuExecutable(result[])
+    end
+end
+
+function compile!(compiler::TpuCompiler, module_group::XLA.HloModuleGroupProto,
+                  execs::Vector{Vector{TpuExecutor}},
+                  allocator::SEDeviceMemoryAllocator)
+    buf = IOBuffer()
+    writeproto(buf, module_group)
+    module_group_serialized = take!(buf)
+    confs = XLA_HloModuleConfig[
+    XLA_HloModuleConfig(
+        0, 1, 1, 0, true, false, TpuSerializedProto(), true,
+        XLA_ComputationLayout(0, C_NULL, XLA_Shape(11, Int64List(), BoolList(),
+        C_NULL, 0, XLA_Layout())))]
+    @GC.preserve execs module_group_serialized confs begin
+        exec_ptrs = [[Base.unsafe_convert(Ptr{Cvoid}, exec) for exec in exec_list] for exec_list in execs]
+        @GC.preserve exec_ptrs begin
+            s_list = SEStreamExecutorList[SEStreamExecutorList(
+                Base.unsafe_convert(Ptr{Ptr{Cvoid}}, ptr_list),
+                length(ptr_list)
+            ) for ptr_list in exec_ptrs]
+
+            modr = Ref(XLA_HloModuleGroup(
+                TpuSerializedProto(Base.unsafe_convert(Ptr{UInt8}, module_group_serialized), sizeof(module_group_serialized)),
+                Base.unsafe_convert(Ptr{XLA_HloModuleConfig}, confs)
+            ))
+            results = Vector{Ptr{Cvoid}}(undef, length(module_group.hlo_modules))
+            with_status() do s
+                @ccall libtpu.TpuCompiler_Compile(compiler::Ptr{Cvoid},
+                    modr::Ptr{XLA_HloModuleGroup}, s_list::Ptr{SEStreamExecutorList},
+                    length(execs)::Csize_t,
+                    allocator::Ptr{SEDeviceMemoryAllocator},
+                    results::Ptr{Ptr{Cvoid}}, s::Ptr{Cvoid})::Cvoid
+            end
+            return map(TpuExecutable, results)
+        end
     end
 end
 
@@ -465,7 +516,24 @@ mutable struct SE_ExecutableRunOptions
     launch_id::Cint
 
     # roots
+    _stream
+    _host_to_device_stream
+
+    function SE_ExecutableRunOptions(allocator::SEDeviceMemoryAllocator,
+        stream::TpuStream, host_to_device_stream::Union{TpuStream, Nothing};
+        device_ordinal=0, rng_seed=0, run_id=0, launch_id=0)
+
+        new(allocator, device_ordinal, Base.unsafe_convert(Ptr{Cvoid}, stream),
+            host_to_device_stream === nothing ? C_NULL :
+                Base.unsafe_convert(Ptr{Cvoid}, host_to_device_stream),
+            TpuSerializedProto(),
+            rng_seed, run_id, launch_id,
+            stream, host_to_device_stream
+        )
+    end
 end
+Base.unsafe_convert(::Type{Ptr{SE_ExecutableRunOptions}}, x::SE_ExecutableRunOptions) =
+    Ptr{SE_ExecutableRunOptions}(pointer_from_objref(x))
 
 struct SE_ExecutionInput
     #= stuff =#
@@ -493,12 +561,12 @@ struct SE_ExecutionOutput
 end
 
 function execute_async!(executable::TpuExecutable, options::SE_ExecutableRunOptions,
-    arguments::Vector{SE_ExecutionInput}, hlo_execution_profile)
+    arguments::Vector{SE_ExecutionInput})
     output = Ref{SE_ExecutionOutput}()
     with_status() do s
-        @ccall libtpu.TpuExecutable_ExecuteAsyncOnStreamFn(executable::Ptr{TpuExecutable}, options::Ptr{SE_ExecutableRunOptions},
+        @ccall libtpu.TpuExecutable_ExecuteAsyncOnStream(executable::Ptr{Cvoid}, options::Ptr{SE_ExecutableRunOptions},
             arguments::Ptr{SE_ExecutionInput}, length(arguments)::Csize_t,
-            output::Ptr{SE_ExecutionOutput}, s::Ptr{Cvoid})::Cvoid
+            C_NULL::Ptr{Cvoid}, output::Ptr{SE_ExecutionOutput}, s::Ptr{Cvoid})::Cvoid
     end
     output[]
 end
@@ -510,7 +578,8 @@ for (T, sym) in
      (TpuStreamExecutorConfig, :TpuStreamExecutorConfig_Free),
      (SEDeviceOptions, :TpuExecutor_FreeDeviceOptions),
      (TpuCompiler, :TpuCompiler_Free),
-     (TpuExecutable, :TpuExecutable_Free))
+     (TpuExecutable, :TpuExecutable_Free),
+     (TpuStream, :TpuStream_Free))
     Base.unsafe_convert(::Type{Ptr{Cvoid}}, h::T) = h.handle
     @eval function Base.close(h::$T)
         ccall(($(quot(sym)), libtpu), Cvoid, (Ptr{Cvoid},), h)
@@ -519,10 +588,17 @@ for (T, sym) in
 end
 
 #=
+SE_DeviceMemoryBase TpuExecutor_Allocate(SE_StreamExecutor* executor,
+                                         uint64_t size, int64_t memory_space);
+=#
+
+#=
 using Revise
 using XLA, ProtoBuf
 
-includet("/home/keno/.julia/dev/XLA/src/libtpu.jl")
+using XLA: TpuPlatform, TpuExecutor, TpuCompiler, initialize!, run_backend!,
+    SEDeviceMemoryAllocator, compile!, SE_ExecutableRunOptions, TpuStream,
+    execute_async!, SE_ExecutionInput
 
 p = TpuPlatform()
 initialize!(p)
@@ -536,24 +612,30 @@ using XLA: HloModuleGroupProto, Shape, HloInstructionProto,
 
 c = HloConstant(Float32(0))
 
-inst = HloInstructionProto()
-XLA.fill_fields!(inst, c)
+inst = HloInstructionProto(c; id=0)
 
-computations = HloComputationProto[]
 comp = HloComputationProto(
     name = "comp",
     instructions = [inst],
-    id = 0
+    id = 0,
+    root_id = 0
 )
 hlo_module = HloModuleProto(
     name = "test",
-    computations = computations,
+    computations = [comp],
     entry_computation_name = "comp",
     entry_computation_id = 0,
     id = 0,
     host_program_shape = ProgramShapeProto(result=Shape(Float32, ())),
 )
+hlo_module_group = HloModuleGroupProto(
+    hlo_modules = [hlo_module],
+    name = "all_the_modules"
+)
 
-executable = run_backend!(compiler, hlo_module, exec, SEDeviceMemoryAllocator(p))[]
-execute_async!(executable, SE_ExecutableRunOptions(stream))
+stream = TpuStream(exec)
+
+allocator = SEDeviceMemoryAllocator(p, exec)
+executable = compile!(compiler, hlo_module_group, [[exec]], allocator)[]
+execute_async!(executable, SE_ExecutableRunOptions(allocator, stream, stream), SE_ExecutionInput[])
 =#
