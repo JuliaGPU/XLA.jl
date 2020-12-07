@@ -290,10 +290,16 @@ struct SE_DeviceMemoryBase
     size::UInt64
     payload::UInt64
 end
+SE_DeviceMemoryBase() = SE_DeviceMemoryBase(C_NULL, 0, 0)
 
 
 function allocate!(e::TpuExecutor, size::UInt64, memory_space::Int64)
     @ccall libtpu.TpuExecutor_Allocate(e::Ptr{Cvoid}, size::UInt64, memory_space::Int64)::SE_DeviceMemoryBase
+end
+
+function deallocate!(e::TpuExecutor, mem::SE_DeviceMemoryBase)
+    rmem = Ref{SE_DeviceMemoryBase}(mem)
+    @ccall libtpu.TpuExecutor_Deallocate(e::Ptr{Cvoid}, rmem::Ptr{SE_DeviceMemoryBase})::Cvoid
 end
 
 mutable struct SEDeviceOptions
@@ -654,15 +660,27 @@ function execute_async!(executable::TpuExecutable, options::SE_ExecutableRunOpti
     output
 end
 
-function unsafe_copy_async!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor, stream::TpuStream, )
+function unsafe_copyto_async!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor, stream::TpuStream)
     rdst = Ref{SE_DeviceMemoryBase}(dst)
     @ccall libtpu.TpuExecutor_MemcpyFromHost(exec::Ptr{Cvoid}, stream::Ptr{Cvoid},
         rdst::Ptr{SE_DeviceMemoryBase}, src::Ptr{UInt8}, size::Csize_t)::Bool
 end
 
-function unsafe_copy_async!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor, stream::TpuStream, )
+function unsafe_copyto_async!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor, stream::TpuStream)
     rsrc = Ref{SE_DeviceMemoryBase}(src)
     @ccall libtpu.TpuExecutor_MemcpyToHost(exec::Ptr{Cvoid}, stream::Ptr{Cvoid},
+        dst::Ptr{UInt8}, rsrc::Ptr{SE_DeviceMemoryBase}, size::Csize_t)::Bool
+end
+
+function Base.unsafe_copyto!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor)
+    rdst = Ref{SE_DeviceMemoryBase}(dst)
+    @ccall libtpu.TpuExecutor_SynchronousMemcpyFromHost(exec::Ptr{Cvoid},
+        rdst::Ptr{SE_DeviceMemoryBase}, src::Ptr{UInt8}, size::Csize_t)::Bool
+end
+
+function Base.unsafe_copyto!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor)
+    rsrc = Ref{SE_DeviceMemoryBase}(src)
+    @ccall libtpu.TpuExecutor_SynchronousMemcpyToHost(exec::Ptr{Cvoid},
         dst::Ptr{UInt8}, rsrc::Ptr{SE_DeviceMemoryBase}, size::Csize_t)::Bool
 end
 
@@ -694,7 +712,7 @@ using XLA, ProtoBuf
 using XLA: TpuPlatform, TpuExecutor, TpuCompiler, initialize!, run_backend!,
     SEDeviceMemoryAllocator, compile!, SE_ExecutableRunOptions, TpuStream,
     execute_async!, SE_ExecutionInput, shape_size, SE_MaybeOwningDeviceMemory,
-    unsafe_copy_async!, XLA_MaybeOwningDeviceMemoryShapeTree
+    unsafe_copyto_async!, XLA_MaybeOwningDeviceMemoryShapeTree
 
 p = TpuPlatform()
 initialize!(p)
@@ -722,7 +740,7 @@ ptrs = SE_MaybeOwningDeviceMemory[
     SE_MaybeOwningDeviceMemory(mem, false, 0, allocator)
 ]
 
-unsafe_copy_async!(mem, Ptr{UInt8}(Base.unsafe_convert(Ptr{Float32}, x)), UInt64(size); exec, stream)
+unsafe_copyto_async!(mem, Ptr{UInt8}(Base.unsafe_convert(Ptr{Float32}, x)), UInt64(size); exec, stream)
 inputs = SE_ExecutionInput[
     SE_ExecutionInput(
         XLA_MaybeOwningDeviceMemoryShapeTree(xs,
@@ -741,7 +759,7 @@ output = execute_async!(executable, SE_ExecutableRunOptions(allocator, stream, n
 output_mem = unsafe_load(output.result.bases)
 
 y = zeros(Float32, 1024, 1024)
-unsafe_copy_async!(Ptr{UInt8}(Base.unsafe_convert(Ptr{Float32}, y)), output_mem, UInt64(size); exec, stream)
+unsafe_copyto_async!(Ptr{UInt8}(Base.unsafe_convert(Ptr{Float32}, y)), output_mem, UInt64(size); exec, stream)
 @ccall XLA.libtpu.TpuExecutor_SynchronizeAllActivity(exec::Ptr{Cvoid})::Bool
 
 =#

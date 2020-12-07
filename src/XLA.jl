@@ -37,6 +37,7 @@ module XLA
     #include("infeed.jl")
     #include("flux.jl")
     include("abstractinterpret.jl")
+    include("array.jl")
 
     function regen_proto()
         tf_path = "/home/keno/tensorflow/tensorflow/"
