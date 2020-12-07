@@ -29,13 +29,14 @@ module XLA
     include("emulate.jl")
     include("linalg.jl")
     #include("explain.jl")
-    #include("compiler.jl")
+    include("compiler.jl")
     #include("compiler_passes.jl")
     #include("compiler_interface.jl")
     #include("utils.jl")
     #include("grad.jl")
     #include("infeed.jl")
     #include("flux.jl")
+    include("abstractinterpret.jl")
 
     function regen_proto()
         tf_path = "/home/keno/tensorflow/tensorflow/"

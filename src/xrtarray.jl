@@ -126,6 +126,7 @@ function Shape(XLAT::XlaType, SHP::Tuple)
     Shape(
         element_type = XLAT.which,
         dimensions = Int64[SHP...],
+        is_dynamic_dimension = Bool[false for i = 1:length(SHP)],
         layout = Layout(
             format = Format.DENSE,
             minor_to_major = perm .- 1

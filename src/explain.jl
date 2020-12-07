@@ -1,9 +1,3 @@
-struct NotOffloadableError
-    ir
-    sv
-    reason
-end
-
 function Base.showerror(io::IO, e::NotOffloadableError)
     println(io, "The specified function is not offloadable. The offending IR was:")
     Base.IRShow.show_ir(io, e.ir; verbose_linetable=false)

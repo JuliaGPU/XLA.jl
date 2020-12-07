@@ -1,13 +1,14 @@
 const Compiler = Core.Compiler
 using .Compiler: ReturnNode, argextype, SSAValue, ⊑, widenconst, userefs, LineInfoNode, GotoNode,
     IRCode, GotoIfNot, PiNode, PhiNode, foreachssa, block_for_inst, insert_node!,
-    dominates, dominated, DominatedBlocks
+    dominates, dominated, DominatedBlocks, Const
 using InteractiveUtils
 using ..XLA: HloParameter, HloOp, XLAComputationConfig, HloModuleProto, HloProto,
     HloSnapshot, XLAComputation, HloMap, HloGetTupleElement, XLAScalar,
     HloReduceWindow, HloReduce, HloTuple
 
 Base.iterate(d::Compiler.DominatedBlocks, state...) = Compiler.iterate(d, state...)
+Base.lastindex(insts::Core.Compiler.InstructionStream) = Core.Compiler.length(insts)
 
 function grab_ir(f, argtypes)
     method = @which f(W, x, b)
@@ -15,6 +16,16 @@ function grab_ir(f, argtypes)
     mi = Compiler.code_for_method(method, sig, Core.svec(), params.world)
     sv = Compiler.OptimizationState(mi, params)
     ir = Compiler.inflate_ir(ci, mi)
+end
+
+struct NotOffloadableError
+    ir
+    sv
+    reason
+end
+
+function analyze_unreachable(io::IO, ir, sv)
+    error()
 end
 
 macro check_ir(cond, args...)
@@ -57,7 +68,6 @@ function _compile_to_xla!(computations, comp, ir, sv)
     ir = outline_control_flow!(ir, sv)
     arg_instrs = Vector{HloInstructionProto}(undef, length(ir.argtypes))
     xla_args = Type[]
-    sparams = sv === nothing ? Core.svec() : sv.sp
     for i = 1:length(ir.argtypes)
         # TODO: We could represent this as a kConstant
         isa(ir.argtypes[i], Const) && continue
@@ -99,29 +109,35 @@ function _compile_to_xla!(computations, comp, ir, sv)
             @check_ir false "Tried to evaluate $(arg) as an HLO argument"
         end
     end
-    for (stmt_idx, stmt) in pairs(ir.stmts)
+    for stmt_idx in 1:length(ir.stmts)
+        stmt = ir.stmts[stmt_idx][:inst]
         isa(stmt, Nothing) && continue
         isa(stmt, ReturnNode) && continue
         @check_ir !isa(stmt, PhiNode) "Unsupported control flow found in function"
         if isa(stmt, PiNode)
-            if !(widenconst(argextype(stmt.val, ir, sparams)) <: XLAScalar)
+            if !(widenconst(argextype(stmt.val, ir, ir.sptypes)) <: XLAScalar)
                 ssa_vals[stmt_idx] = hlo_eval(stmt.val)
             end
             continue
         end
-        if isexpr(stmt, :new) || (isexpr(stmt, :call) && is_known_call(stmt, tuple, ir, sparams))
+        if isexpr(stmt, :new) || (isexpr(stmt, :call) && is_known_call(stmt, tuple, ir, ir.sptypes))
+            # Handle non-inlined constructors for HLo operations
+            nT = argextype(stmt.args[1], ir, ir.sptypes)
+            if (isa(nT, Type) && nT.parameters[1] <: HloOp) || (isa(nT, Const) && nT.val <: HloOp)
+                continue
+            end
             args = Any[]
             for arg in stmt.args[2:end]
-                ty = argextype(arg, ir, sparams)
+                ty = argextype(arg, ir, ir.sptypes)
                 representable(arg) || continue
                 push!(args, hlo_eval(arg))
             end
             ssa_vals[stmt_idx] = HloInstructionProto(comp, HloTuple(), args...)
             continue
         end
-        if isexpr(stmt, :call) && is_known_call(stmt, getfield, ir, sparams)
-            structT = widenconst(argextype(stmt.args[2], ir, sparams))
-            elt = argextype(stmt.args[3], ir, sparams)
+        if isexpr(stmt, :call) && is_known_call(stmt, getfield, ir, ir.sptypes)
+            structT = widenconst(argextype(stmt.args[2], ir, ir.sptypes))
+            elt = argextype(stmt.args[3], ir, ir.sptypes)
             isa(elt, Const) || error("non-constant structure indexing (1)")
             idx = Compiler.try_compute_fieldidx(structT, elt.val)
             idx !== nothing || error("non-constant structure indexing (2)")
@@ -134,7 +150,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
             ssa_vals[stmt_idx] = proto
             continue
         end
-        if isa(stmt, GlobalRef) && isa(argextype(stmt, ir, sparams), Const)
+        if isa(stmt, GlobalRef) && isa(argextype(stmt, ir, ir.sptypes), Const)
             continue
         end
         if !isexpr(stmt, :invoke) && !(isexpr(stmt, :call) && (isa(stmt.args[1], _HloIf) || isa(stmt.args[1], _HloWhile)))
@@ -143,14 +159,14 @@ function _compile_to_xla!(computations, comp, ir, sv)
             error("Unrecognized expr")
         end
         hlo_inst = isexpr(stmt, :invoke) ? stmt.args[2] : stmt.args[1]
-        hlo_inst = argextype(hlo_inst, ir, sparams)
+        hlo_inst = argextype(hlo_inst, ir, ir.sptypes)
         hlo_inst = hlo_inst.val
         if isa(hlo_inst, HloOp)
             if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce) || isa(hlo_inst, HloSort)
                 args = map(hlo_eval, stmt.args[4:end])
                 proto = HloInstructionProto(comp, hlo_inst, args...)
-                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[i], ir, sparams)), (), 0} for i = 4:length(stmt.args))...}
-                argvals = process_function_argument(nothing, sig, 1, ir, stmt, sparams)
+                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[i], ir, ir.sptypes)), (), 0} for i = 4:length(stmt.args))...}
+                argvals = process_function_argument(nothing, sig, 1, ir, stmt, ir.sptypes)
                 res = code_typed_xla(sig; argvals=argvals)
                 if res === nothing
                     throw(NotOffloadableError(ir, sv, sprint(io->showerror(io, MethodError(
@@ -171,10 +187,10 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 proto.called_computation_ids = [comp′.id]
             elseif isa(hlo_inst, Union{HloScatter, HloCrossReplicaSum})
                 args = map(hlo_eval, stmt.args[4:end])
-                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->widenconst(argextype(arg, ir, sparams)), stmt.args[3:end])...))
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->widenconst(argextype(arg, ir, ir.sptypes)), stmt.args[3:end])...))
                 proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
-                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[4], ir, sparams)), (), 0} for i = 1:2)...}
-                argvals = process_function_argument(nothing, sig, 1, ir, stmt, sparams)
+                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[4], ir, ir.sptypes)), (), 0} for i = 1:2)...}
+                argvals = process_function_argument(nothing, sig, 1, ir, stmt, ir.sptypes)
                 ir′, sv′ = code_typed_xla(sig; argvals=argvals)
                 if sizeof(sig.parameters[1]) != 0
                     ir′.argtypes[1] = Const(argvals[1])
@@ -194,7 +210,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 # Compile comparison function
                 let
                     select_sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
-                    select_argvals = process_function_argument(nothing, select_sig, 1, ir, stmt, sparams)
+                    select_argvals = process_function_argument(nothing, select_sig, 1, ir, stmt, ir.sptypes)
                     ir′, sv′ = code_typed_xla(select_sig; argvals=select_argvals)
                     if sizeof(select_sig.parameters[1]) != 0
                         ir′.argtypes[1] = Const(select_argvals[1])
@@ -211,7 +227,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 # Compile Scatter function
                 let
                     scatter_sig = Tuple{typeof(hlo_inst).parameters[2], (XRTArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
-                    scatter_argvals = process_function_argument(nothing, scatter_sig, 2, ir, stmt, sparams)
+                    scatter_argvals = process_function_argument(nothing, scatter_sig, 2, ir, stmt, ir.sptypes)
                     ir′, sv′ = code_typed_xla(scatter_sig; argvals=scatter_argvals)
                     if sizeof(scatter_sig.parameters[1]) != 0
                         ir′.argtypes[1] = Const(scatter_argvals[1])
@@ -275,25 +291,25 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 end
             elseif isa(hlo_inst, Union{HloInfeed, HloAfterAll})
                 args = map(hlo_eval, stmt.args[3:end])
-                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...); tensorflow_order=isa(hlo_inst, HloInfeed))
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->argextype(arg, ir, ir.sptypes), stmt.args[3:end])...); tensorflow_order=isa(hlo_inst, HloInfeed))
                 proto = HloInstructionProto(comp,
                     hlo_inst, args...,
                     shape = shape)
             elseif isa(hlo_inst, HloOutfeed)
                 args = map(hlo_eval, stmt.args[3:end])
-                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...))
+                shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->argextype(arg, ir, ir.sptypes), stmt.args[3:end])...))
                 proto = HloInstructionProto(comp,
                     hlo_inst, args...,
                     shape = shape)
-                proto.outfeed_shape = dtype_to_shape(widenconst(argextype(stmt.args[3], ir, sparams)); tensorflow_order=true)
+                proto.outfeed_shape = dtype_to_shape(widenconst(argextype(stmt.args[3], ir, ir.sptypes)); tensorflow_order=true)
             else
                 args = map(hlo_eval, stmt.args[3:end])
-                shape = Shape(shape_infer(hlo_inst, map(arg->argextype(arg, ir, sparams), stmt.args[3:end])...)...)
+                shape = Shape(shape_infer(hlo_inst, map(arg->argextype(arg, ir, ir.sptypes), stmt.args[3:end])...)...)
                 proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
             end
             ssa_vals[stmt_idx] = proto
         elseif isa(hlo_inst, Type) && hlo_inst <: XRTArray
-            ty = argextype(stmt.args[3], ir, sparams)
+            ty = argextype(stmt.args[3], ir, ir.sptypes)
             if isa(ty, Const) && isa(ty.val, XLAScalar)
                 ssa_vals[stmt_idx] = HloInstructionProto(comp, HloConstant(ty.val))
             else
@@ -304,8 +320,8 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 ssa_vals[stmt_idx] = hlo_eval(stmt.args[3])
             end
         elseif hlo_inst == Base.convert
-            ty = argextype(stmt.args[3], ir, sparams)
-            arg = argextype(stmt.args[4], ir, sparams)
+            ty = argextype(stmt.args[3], ir, ir.sptypes)
+            arg = argextype(stmt.args[4], ir, ir.sptypes)
             if arg <: XRTArray{<:Any, (), 0} && isa(ty, Const) && ty.val == eltype(arg)
                 # Allow conversions from a scalar array to its element
                 # type and codegen it as a no-op.
@@ -319,7 +335,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
             error("Unrecognized")
         end
     end
-    ret = ir.stmts[end]
+    ret = ir.stmts[end][:inst]
     @assert isa(ret, ReturnNode)
     comp.root_id = hlo_eval(ret.val).id
     xla_args
@@ -330,8 +346,8 @@ const DeviceMeshCoordinates = DeviceAssignment_ComputationDevice_DeviceMeshCoord
 function compile_to_xla(ir, sv; replica_device_coords = nothing)
     # TODO: Since all HLO operations are essentially effect free, we could just have
     # a compilation result that throws this error.
-    @check_ir isa(ir.stmts[end], ReturnNode) && isdefined(ir.stmts[end], :val) analyze_unreachable
-    rt = widenconst(argextype(ir.stmts[end].val, ir, sv.sp))
+    @check_ir isa(ir.stmts[end][:inst], ReturnNode) && isdefined(ir.stmts[end][:inst], :val) analyze_unreachable
+    rt = widenconst(argextype(ir.stmts[end][:inst].val, ir, ir.sptypes))
     computations = HloComputationProto[]
     comp = HloComputationProto(
         name = "comp",
@@ -345,6 +361,7 @@ function compile_to_xla(ir, sv; replica_device_coords = nothing)
         parameters = collect(map(dtype_to_shape, xla_args)),
         result = dtype_to_shape(rt)
     )
+#=
     if replica_device_coords !== nothing
         coordinates = vec([ DeviceMeshCoordinates(value=[dev.x, dev.y, dev.core]) for dev in replica_device_coords ])
         cd = ComputationDevice(
@@ -363,6 +380,7 @@ function compile_to_xla(ir, sv; replica_device_coords = nothing)
             program_shape = pshape
         )
     end
+=#
     hlo_module = HloModuleProto(
         name = "test",
         computations = computations,
@@ -371,6 +389,11 @@ function compile_to_xla(ir, sv; replica_device_coords = nothing)
         id = 0,
         host_program_shape = pshape,
     )
+    hlo_module_group = HloModuleGroupProto(
+        name = "group",
+        hlo_modules = [hlo_module]
+    )
+#=
     hlo = HloProto(
         hlo_module = hlo_module
     )
@@ -381,7 +404,8 @@ function compile_to_xla(ir, sv; replica_device_coords = nothing)
         config=config,
         hlo_snapshot = hlo_snap
     )
-    xlac, rt
+=#
+    hlo_module_group, rt
 end
 
 function representable(T)

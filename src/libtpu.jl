@@ -226,7 +226,7 @@ let initialized = false
     global initialize_tpu_runtime
     function initialize_tpu_runtime()
         if !initialized
-            args = []
+            args = ["--install_signal_handlers=0"]
             ccall((:TfTpu_Initialize, libtpu), Cvoid, (Bool, Cint, Ptr{Cstring}), true, length(args), args)
             initialized = true
         end
@@ -316,6 +316,8 @@ mutable struct TpuCompiler
     end
 end
 
+
+
 struct SEStreamExecutorList
     lists::Ptr{Ptr{Cvoid}}
     count::Cint
@@ -329,6 +331,9 @@ end
 function device_allocate(ctx::Ptr{Cvoid}, device_ordinal::Cint, size::UInt64,
     retry_on_failure::Bool, memory_space::Int64, result::Ptr{SE_ScopedDeviceMemory},
     status::Ptr{Cvoid})
+
+    ccall(:jl_, Cvoid, (Any,), ("XXXXXXX", size))
+
     executor = unsafe_pointer_to_objref(ctx)::TpuExecutor
     mem = allocate!(executor, size, memory_space)
     unsafe_store!(result, SE_ScopedDeviceMemory(mem, device_ordinal))
@@ -387,6 +392,12 @@ struct LibTPUList{T}
     size::Int64
 end
 LibTPUList{T}() where {T} = LibTPUList{T}(ntuple(_->zero(T),6), 0)
+function Base.convert(::Type{LibTPUList{T}}, x::Vector{T}) where {T}
+    @assert length(x) <= 6
+    LibTPUList{T}(ntuple(6) do i
+        i > length(x) ? zero(T) : x[i]
+    end, length(x))
+end
 
 const Int64List = LibTPUList{Int64}
 const BoolList = LibTPUList{Bool}
@@ -404,23 +415,68 @@ struct XLA_Layout
     tiles::TileList
     element_size_in_bits::Int64
     memory_space::Int64
-    XLA_Layout() = new(0, Int64List(), TileList(), 0, 0)
+end
+XLA_Layout() = XLA_Layout(0, Int64List(), TileList(), 0, 0)
+
+function Base.convert(::Type{XLA_Layout}, layout::Layout)
+    fields = layout.__protobuf_jl_internal_values
+    XLA_Layout(layout.format,
+        haskey(fields, :minor_to_major) ? convert(Int64List, layout.minor_to_major) : Int64List(),
+        haskey(fields, :tiles) ? convert(TileList, layout.tiles) : TileList(),
+        haskey(fields, :element_size_in_bits) ? layout.element_size_in_bits : 0,
+        haskey(fields, :memory_space) ? layout.memory_space : 0)
 end
 
 struct XLA_Shape
     element_type::Cint
     dimensions::Int64List
     dynamic_dimensions::BoolList
-    tuple_shapes::Ptr{XLA_Shape}
+    tuple_shapes::NTuple{N, XLA_Shape} where N
     ntuple_shapes::Cint
     layout::XLA_Layout
+end
+XLA_Shape() = XLA_Shape(0, Int64List(), BoolList(), (), 0, XLA_Layout())
+
+function Base.convert(::Type{XLA_Shape}, shape::Shape)
+    fields = shape.__protobuf_jl_internal_values
+    tuple_shapes = ()
+    if haskey(fields, :tuple_shapes) && length(shape.tuple_shapes) !== 0
+        tuple_shapes = tuple(map(shape.tuple_shapes) do tshape
+            convert(XLA_Shape, tshape)
+        end...)
+    end
+    XLA_Shape(shape.element_type,
+        haskey(fields, :dimensions) ? convert(Int64List, shape.dimensions) : Int64List(),
+        haskey(fields, :is_dynamic_dimension) ? convert(BoolList, shape.is_dynamic_dimension) : BoolList(),
+        tuple_shapes, length(tuple_shapes),
+        haskey(fields, :layout) ? convert(XLA_Layout, shape.layout) : XLA_Layout()
+    )
 end
 
 struct XLA_ComputationLayout
     parameter_count::Cint
     parameter_layouts::Ptr{XLA_Shape}
     result_layout::XLA_Shape
+
+    # roots
+    _parameter_layouts::Union{Nothing, Vector{XLA_Shape}}
 end
+
+function Base.convert(::Type{XLA_ComputationLayout}, pshape::ProgramShape)
+    parameters = nothing
+    if length(pshape.parameters) != 0
+        parameters = map(pshape.parameters) do shape
+            convert(XLA_Shape, shape)
+        end
+    end
+    XLA_ComputationLayout(
+        parameters === nothing ? 0 : length(parameters),
+        parameters === nothing ? C_NULL : Base.unsafe_convert(Ptr{XLA_Shape}, parameters),
+        convert(XLA_Shape, pshape.result),
+        parameters
+    )
+end
+
 
 struct XLA_HloModuleConfig
     seed::UInt64
@@ -475,11 +531,12 @@ function compile!(compiler::TpuCompiler, module_group::XLA.HloModuleGroupProto,
     buf = IOBuffer()
     writeproto(buf, module_group)
     module_group_serialized = take!(buf)
-    confs = XLA_HloModuleConfig[
-    XLA_HloModuleConfig(
-        0, 1, 1, 0, true, false, TpuSerializedProto(), true,
-        XLA_ComputationLayout(0, C_NULL, XLA_Shape(11, Int64List(), BoolList(),
-        C_NULL, 0, XLA_Layout())))]
+    confs = map(module_group.hlo_modules) do hlo_module
+        XLA_HloModuleConfig(
+            0, 1, 1, 0, true, false, TpuSerializedProto(), true,
+            convert(XLA_ComputationLayout, hlo_module.host_program_shape))
+    end
+    @show confs
     @GC.preserve execs module_group_serialized confs begin
         exec_ptrs = [[Base.unsafe_convert(Ptr{Cvoid}, exec) for exec in exec_list] for exec_list in execs]
         @GC.preserve exec_ptrs begin
@@ -503,6 +560,11 @@ function compile!(compiler::TpuCompiler, module_group::XLA.HloModuleGroupProto,
             return map(TpuExecutable, results)
         end
     end
+end
+
+function shape_size(compiler::TpuCompiler, shape::XLA_Shape)
+    rshape = Ref{XLA_Shape}(shape)
+    @ccall libtpu.TpuCompiler_ShapeSize(compiler::Ptr{Cvoid}, rshape::Ptr{XLA_Shape})::Int64
 end
 
 mutable struct SE_ExecutableRunOptions
@@ -535,16 +597,18 @@ end
 Base.unsafe_convert(::Type{Ptr{SE_ExecutableRunOptions}}, x::SE_ExecutableRunOptions) =
     Ptr{SE_ExecutableRunOptions}(pointer_from_objref(x))
 
-struct SE_ExecutionInput
-    #= stuff =#
+struct SE_MaybeOwningDeviceMemory
+    memory::SE_DeviceMemoryBase
+    owned::Bool
+
+    # Set if owned
+    device_ordinal::Cint
+    allocator::SEDeviceMemoryAllocator
 end
 
-struct XLA_ShapedBuffer
-    on_device_shape::XLA_Shape
-    device_ordinal::Cint
-
-    bases::Ptr{Cvoid}
-    count::Csize_t
+struct XLA_MaybeOwningDeviceMemoryShapeTree
+    shape::XLA_Shape
+    buffers::Ptr{SE_MaybeOwningDeviceMemory}
 end
 
 struct XLA_ShapeIndex
@@ -552,23 +616,54 @@ struct XLA_ShapeIndex
     count::Int64
 end
 
-struct SE_ExecutionOutput
+mutable struct SE_ExecutionInput
+    shape_tree::XLA_MaybeOwningDeviceMemoryShapeTree
+    unowned_indices::Ptr{XLA_ShapeIndex}
+    unowned_indices_size::Cint
+    dynamic_shape::XLA_Shape
+end
+
+struct XLA_ShapedBuffer
+    on_device_shape::XLA_Shape
+    device_ordinal::Cint
+
+    bases::Ptr{SE_DeviceMemoryBase}
+    count::Csize_t
+end
+XLA_ShapedBuffer() = XLA_ShapedBuffer(XLA_Shape(), 0, C_NULL, 0)
+
+mutable struct SE_ExecutionOutput
     result::XLA_ShapedBuffer
     to_be_released::Ptr{Ptr{Cvoid}}
     to_be_released_size::Csize_t
     aliased_indices::Ptr{XLA_ShapeIndex}
     aliased_indices_size::Cint
+    SE_ExecutionOutput() = new(XLA_ShapedBuffer(), C_NULL, 0, C_NULL, 0)
 end
+Base.unsafe_convert(::Type{Ptr{SE_ExecutionOutput}}, output::SE_ExecutionOutput) =
+    Ptr{SE_ExecutionOutput}(pointer_from_objref(output))
 
 function execute_async!(executable::TpuExecutable, options::SE_ExecutableRunOptions,
     arguments::Vector{SE_ExecutionInput})
-    output = Ref{SE_ExecutionOutput}()
+    output = SE_ExecutionOutput()
     with_status() do s
         @ccall libtpu.TpuExecutable_ExecuteAsyncOnStream(executable::Ptr{Cvoid}, options::Ptr{SE_ExecutableRunOptions},
             arguments::Ptr{SE_ExecutionInput}, length(arguments)::Csize_t,
             C_NULL::Ptr{Cvoid}, output::Ptr{SE_ExecutionOutput}, s::Ptr{Cvoid})::Cvoid
     end
-    output[]
+    output
+end
+
+function unsafe_copy_async!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor, stream::TpuStream, )
+    rdst = Ref{SE_DeviceMemoryBase}(dst)
+    @ccall libtpu.TpuExecutor_MemcpyFromHost(exec::Ptr{Cvoid}, stream::Ptr{Cvoid},
+        rdst::Ptr{SE_DeviceMemoryBase}, src::Ptr{UInt8}, size::Csize_t)::Bool
+end
+
+function unsafe_copy_async!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor, stream::TpuStream, )
+    rsrc = Ref{SE_DeviceMemoryBase}(src)
+    @ccall libtpu.TpuExecutor_MemcpyToHost(exec::Ptr{Cvoid}, stream::Ptr{Cvoid},
+        dst::Ptr{UInt8}, rsrc::Ptr{SE_DeviceMemoryBase}, size::Csize_t)::Bool
 end
 
 for (T, sym) in
@@ -598,7 +693,8 @@ using XLA, ProtoBuf
 
 using XLA: TpuPlatform, TpuExecutor, TpuCompiler, initialize!, run_backend!,
     SEDeviceMemoryAllocator, compile!, SE_ExecutableRunOptions, TpuStream,
-    execute_async!, SE_ExecutionInput
+    execute_async!, SE_ExecutionInput, shape_size, SE_MaybeOwningDeviceMemory,
+    unsafe_copy_async!, XLA_MaybeOwningDeviceMemoryShapeTree
 
 p = TpuPlatform()
 initialize!(p)
@@ -606,36 +702,46 @@ exec = TpuExecutor(p)
 initialize!(exec)
 compiler = TpuCompiler()
 
-using XLA: HloModuleGroupProto, Shape, HloInstructionProto,
-    HloComputationProto, HloModuleProto, HloModuleGroupProto,
-    XRTScalar, ProgramShapeProto
-
-c = HloConstant(Float32(0))
-
-inst = HloInstructionProto(c; id=0)
-
-comp = HloComputationProto(
-    name = "comp",
-    instructions = [inst],
-    id = 0,
-    root_id = 0
-)
-hlo_module = HloModuleProto(
-    name = "test",
-    computations = [comp],
-    entry_computation_name = "comp",
-    entry_computation_id = 0,
-    id = 0,
-    host_program_shape = ProgramShapeProto(result=Shape(Float32, ())),
-)
-hlo_module_group = HloModuleGroupProto(
-    hlo_modules = [hlo_module],
-    name = "all_the_modules"
-)
+TT = XRTArray{Float32, (1024, 1024), 2}
+interp = XLA.GPUInterpreter(Base.get_world_counter())
+ir = XLA.compile_sig(interp, Tuple{typeof(identity), TT})
+hlo_module_group, rt = XLA.compile_to_xla(ir, nothing)
 
 stream = TpuStream(exec)
 
 allocator = SEDeviceMemoryAllocator(p, exec)
 executable = compile!(compiler, hlo_module_group, [[exec]], allocator)[]
-execute_async!(executable, SE_ExecutableRunOptions(allocator, stream, stream), SE_ExecutionInput[])
+
+xs = convert(XLA.XLA_Shape, XLA.Shape(Float32, (1024, 1024)))
+size = shape_size(compiler, xs)
+mem = XLA.allocate!(exec, UInt64(size), 0)
+
+x = ones(Float32, 1024, 1024)
+
+ptrs = SE_MaybeOwningDeviceMemory[
+    SE_MaybeOwningDeviceMemory(mem, false, 0, allocator)
+]
+
+unsafe_copy_async!(mem, Ptr{UInt8}(Base.unsafe_convert(Ptr{Float32}, x)), UInt64(size); exec, stream)
+inputs = SE_ExecutionInput[
+    SE_ExecutionInput(
+        XLA_MaybeOwningDeviceMemoryShapeTree(xs,
+            Base.unsafe_convert(Ptr{SE_MaybeOwningDeviceMemory}, ptrs)
+        ),
+        C_NULL, 0, xs
+    )#=,
+    SE_ExecutionInput(
+        XLA_MaybeOwningDeviceMemoryShapeTree(xs,
+            Base.unsafe_convert(Ptr{SE_MaybeOwningDeviceMemory}, ptrs)
+        ),
+        C_NULL, 0, xs
+    ),=#
+]
+output = execute_async!(executable, SE_ExecutableRunOptions(allocator, stream, nothing; run_id=5), inputs)
+output_mem = unsafe_load(output.result.bases)
+
+y = zeros(Float32, 1024, 1024)
+unsafe_copy_async!(Ptr{UInt8}(Base.unsafe_convert(Ptr{Float32}, y)), output_mem, UInt64(size); exec, stream)
+@ccall XLA.libtpu.TpuExecutor_SynchronizeAllActivity(exec::Ptr{Cvoid})::Bool
+
 =#
