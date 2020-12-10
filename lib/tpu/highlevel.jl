@@ -31,6 +31,9 @@ mutable struct TpuStatus
         @new_with_finalizer(TpuStatus_New)
     end
 end
+
+Base.unsafe_convert(::Type{Ptr{TF_Status}}, x::TpuStatus) = x.handle
+
 is_ok(s::TpuStatus) = TpuStatus_Ok(s)
 
 function with_status(f)
@@ -49,6 +52,8 @@ mutable struct TpuPlatform
     end
 end
 
+Base.unsafe_convert(::Type{Ptr{SE_Platform}}, x::TpuPlatform) = x.handle
+
 function initialize!(p::TpuPlatform)
     status = Ref{Ptr{SE_Platform}}(C_NULL)
     with_status() do s
@@ -62,6 +67,9 @@ mutable struct TpuStreamExecutorConfig
         @new_with_finalizer(TpuStreamExecutorConfig_Default)
     end
 end
+
+Base.unsafe_convert(::Type{Ptr{SE_StreamExecutorConfig}}, x::TpuStreamExecutorConfig) = x.handle
+
 set_ordinal!(sec::TpuStreamExecutorConfig, o::Integer) =
     TpuStreamExecutorConfig_SetOrdinal(sec, o)
 
@@ -74,6 +82,8 @@ mutable struct TpuExecutor
     end
 end
 SE_DeviceMemoryBase() = SE_DeviceMemoryBase(C_NULL, 0, 0)
+
+Base.unsafe_convert(::Type{Ptr{SE_StreamExecutor}}, x::TpuExecutor) = x.handle
 
 
 function allocate!(e::TpuExecutor, size::UInt64, memory_space::Int64)
@@ -104,6 +114,8 @@ mutable struct TpuCompiler
         @new_with_finalizer(TpuCompiler_New)
     end
 end
+
+Base.unsafe_convert(::Type{Ptr{Tpu_Compiler}}, x::TpuCompiler) = x.handle
 
 function device_allocate(ctx::Ptr{Cvoid}, device_ordinal::Cint, size::UInt64,
     retry_on_failure::Bool, memory_space::Int64, result::Ptr{SE_ScopedDeviceMemory},
@@ -142,12 +154,16 @@ mutable struct TpuExecutable
     end
 end
 
+Base.unsafe_convert(::Type{Ptr{SE_Executable}}, x::TpuExecutable) = x.handle
+
 mutable struct TpuStream
     handle::Ptr{SE_Stream}
     function TpuStream(parent::TpuExecutor)
         @new_with_finalizer(TpuStream_New(parent))
     end
 end
+
+Base.unsafe_convert(::Type{Ptr{SE_Stream}}, x::TpuStream) = x.handle
 
 TpuSerializedProto() = TpuSerializedProto(C_NULL, 0)
 

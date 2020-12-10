@@ -18,7 +18,7 @@ const TPU_C_API_MAX_INLINED = 6
 end
 
 
-const TF_Status = Cvoid
+struct TF_Status end
 
 @cenum TF_Code::UInt32 begin
     TF_OK = 0
@@ -54,11 +54,11 @@ end
 end
 
 
-const SE_Platform = Cvoid
-const SE_StreamExecutor = Cvoid
-const SE_Stream = Cvoid
-const SE_Event = Cvoid
-const SE_Timer = Cvoid
+struct SE_Platform end
+struct SE_StreamExecutor end
+struct SE_Stream end
+struct SE_Event end
+struct SE_Timer end
 
 struct TpuSerializedProto
     bytes::Cstring
@@ -69,8 +69,8 @@ struct SE_PlatformId
     id::Ptr{Cvoid}
 end
 
-const SE_StreamExecutorConfig = Cvoid
-const SE_DeviceOptions = Cvoid
+struct SE_StreamExecutorConfig end
+struct SE_DeviceOptions end
 const SE_StatusCallbackFn = Ptr{Cvoid}
 
 struct SE_DeviceMemoryBase
@@ -143,8 +143,8 @@ struct SE_DeviceDescription
     ecc_enabled::Bool
 end
 
-const Tpu_Compiler = Cvoid
-const SE_Executable = Cvoid
+struct Tpu_Compiler end
+struct SE_Executable end
 
 mutable struct SE_ExecutableRunOptions
     allocator::SE_DeviceMemoryAllocator
@@ -267,7 +267,7 @@ struct XLA_HloModuleConfig
     entry_computation_layout::XLA_ComputationLayout
 end
 
-const SE_HloExecutionProfile = Cvoid
+struct SE_HloExecutionProfile end
 
 struct SE_StreamExecutorList
     exec::Ptr{Ptr{SE_StreamExecutor}}
@@ -284,12 +284,12 @@ struct XLA_HloModule
     module_config::XLA_HloModuleConfig
 end
 
-const XLA_TransferManager = Cvoid
-const XLA_ComputationPlacer = Cvoid
+struct XLA_TransferManager end
+struct XLA_ComputationPlacer end
 const XLA_CallbackFn = Ptr{Cvoid}
 const XLA_StatusCallbackFn = Ptr{Cvoid}
-const SE_TpuTopology = Cvoid
-const SE_TpuTopology_Core = Cvoid
+struct SE_TpuTopology end
+struct SE_TpuTopology_Core end
 const SE_TpuTopology_Host = SE_TpuTopology_Core
 
 struct TfTpu_ExecutorApiFn
