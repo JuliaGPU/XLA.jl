@@ -31,25 +31,42 @@ end
 
 ## status
 
-export TpuStatus, is_ok, with_status
+export TpuStatus, with_status, TpuError
+
+struct TpuError <: Exception
+    code::Int
+    message::String
+end
+
+Base.showerror(io::IO, err::TpuError) =
+    print(io, "TpuError($(err.code)): $(err.message)")
+
+Base.show(io::IO, ::MIME"text/plain", err::TpuError) = print(io, "TpuError($(err.code))")
 
 mutable struct TpuStatus
     handle::Ptr{TF_Status}
     function TpuStatus()
         @new_with_finalizer(TpuStatus_New)
     end
+    function TpuStatus(code, msg)
+        @new_with_finalizer begin
+            TpuStatus_Create(code, msg)
+        end
+    end
 end
 
 Base.unsafe_convert(::Type{Ptr{TF_Status}}, x::TpuStatus) = x.handle
 
-is_ok(s::TpuStatus) = TpuStatus_Ok(s)
-
 function with_status(f)
-    s = TpuStatus()
-    r = f(s)
-    @assert is_ok(s)
-    close(s)
-    r
+    status = TpuStatus()
+    rv = f(status)
+    if !TpuStatus_Ok(status)
+        code = TpuStatus_Code(status)
+        msg = unsafe_string(TpuStatus_Message(status))
+        throw(TpuError(code, msg))
+    end
+    close(status)
+    rv
 end
 
 
