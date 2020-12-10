@@ -112,7 +112,6 @@ Base.size(A::XRTArray{T, Dims}, i) where {T, Dims} = i <= length(Dims) ? Dims[i]
     d <= length(Dims) ? axes(A)[d] : Base.OneTo(1)
 end
 
-import .xla: Shape
 function Shape(::Type{XRTArray{T, Dims, N}} where N) where {T, Dims}
     Shape(T, Dims)
 end
