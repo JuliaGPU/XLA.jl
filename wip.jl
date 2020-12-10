@@ -2,10 +2,9 @@ using Revise
 using XLA, ProtoBuf
 
 using .LibTPU
-using .LibTPU: TpuPlatform, TpuExecutor, TpuCompiler, initialize!, run_backend!,
-    SE_DeviceMemoryAllocator, compile!, SE_ExecutableRunOptions, TpuStream,
-    execute_async!, SE_ExecutionInput, shape_size, SE_MaybeOwningDeviceMemory,
-    unsafe_copyto_async!, XLA_MaybeOwningDeviceMemoryShapeTree
+using .LibTPU: SE_DeviceMemoryAllocator, SE_ExecutableRunOptions,
+               SE_ExecutionInput, SE_MaybeOwningDeviceMemory,
+               XLA_MaybeOwningDeviceMemoryShapeTree
 
 p = TpuPlatform()
 initialize!(p)
@@ -25,7 +24,7 @@ executable = compile!(compiler, hlo_module_group, [[exec]], allocator)[]
 
 xs = convert(LibTPU.XLA_Shape, XLA.Shape(Float32, (1024, 1024)))
 size = shape_size(compiler, xs)
-mem = LibTPU.allocate!(exec, UInt64(size), 0)
+mem = allocate!(exec, UInt64(size), 0)
 
 x = ones(Float32, 1024, 1024)
 
@@ -53,5 +52,5 @@ output_mem = unsafe_load(output.result.bases)
 
 y = zeros(Float32, 1024, 1024)
 unsafe_copyto_async!(Ptr{UInt8}(Base.unsafe_convert(Ptr{Float32}, y)), output_mem, UInt64(size); exec, stream)
-@ccall LibTPU.libtpu.TpuExecutor_SynchronizeAllActivity(exec::Ptr{Cvoid})::Bool
+LibTPU.TpuExecutor_SynchronizeAllActivity(exec)
 

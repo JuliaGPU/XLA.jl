@@ -1,4 +1,4 @@
-using Base.Meta
+## utils
 
 macro new_with_finalizer(new_sym)
     if isa(new_sym, Symbol)
@@ -14,6 +14,9 @@ macro new_with_finalizer(new_sym)
     end)
 end
 
+
+## initialization
+
 let initialized = false
     global initialize_tpu_runtime
     function initialize_tpu_runtime()
@@ -24,6 +27,11 @@ let initialized = false
         end
     end
 end
+
+
+## status
+
+export TpuStatus, is_ok, with_status
 
 mutable struct TpuStatus
     handle::Ptr{TF_Status}
@@ -44,6 +52,11 @@ function with_status(f)
     r
 end
 
+
+## platform
+
+export TpuPlatform, initialize!
+
 mutable struct TpuPlatform
     handle::Ptr{SE_Platform}
     function TpuPlatform()
@@ -61,6 +74,11 @@ function initialize!(p::TpuPlatform)
     end
 end
 
+
+## executor config
+
+export TpuStreamExecutorConfig, set_ordinal!
+
 mutable struct TpuStreamExecutorConfig
     handle::Ptr{SE_StreamExecutorConfig}
     function TpuStreamExecutorConfig()
@@ -73,6 +91,12 @@ Base.unsafe_convert(::Type{Ptr{SE_StreamExecutorConfig}}, x::TpuStreamExecutorCo
 set_ordinal!(sec::TpuStreamExecutorConfig, o::Integer) =
     TpuStreamExecutorConfig_SetOrdinal(sec, o)
 
+
+
+## executor
+
+export TpuExecutor
+
 mutable struct TpuExecutor
     handle::Ptr{SE_StreamExecutor}
     function TpuExecutor(platform::TpuPlatform; config = TpuStreamExecutorConfig())
@@ -81,10 +105,20 @@ mutable struct TpuExecutor
         end
     end
 end
-SE_DeviceMemoryBase() = SE_DeviceMemoryBase(C_NULL, 0, 0)
 
 Base.unsafe_convert(::Type{Ptr{SE_StreamExecutor}}, x::TpuExecutor) = x.handle
 
+function initialize!(e::TpuExecutor, ordinal = 0, options = SEDeviceOptions(UInt32(0)))
+    with_status() do s
+        TpuExecutor_Init(e, ordinal, options, s)
+    end
+end
+
+# allocations
+
+export allocate!, deallocate!
+
+SE_DeviceMemoryBase() = SE_DeviceMemoryBase(C_NULL, 0, 0)
 
 function allocate!(e::TpuExecutor, size::UInt64, memory_space::Int64)
     TpuExecutor_Allocate(e, size, memory_space)
@@ -95,6 +129,8 @@ function deallocate!(e::TpuExecutor, mem::SE_DeviceMemoryBase)
     TpuExecutor_Deallocate(e, rmem)
 end
 
+# device options
+
 mutable struct SEDeviceOptions
     handle::Ptr{SE_DeviceOptions}
     function SEDeviceOptions(flags::Cuint)
@@ -102,11 +138,10 @@ mutable struct SEDeviceOptions
     end
 end
 
-function initialize!(e::TpuExecutor, ordinal = 0, options = SEDeviceOptions(UInt32(0)))
-    with_status() do s
-        TpuExecutor_Init(e, ordinal, options, s)
-    end
-end
+
+## compiler
+
+export TpuCompiler, run_backend!, compile!, shape_size
 
 mutable struct TpuCompiler
     handle::Ptr{Tpu_Compiler}
@@ -116,6 +151,8 @@ mutable struct TpuCompiler
 end
 
 Base.unsafe_convert(::Type{Ptr{Tpu_Compiler}}, x::TpuCompiler) = x.handle
+
+# allocator
 
 function device_allocate(ctx::Ptr{Cvoid}, device_ordinal::Cint, size::UInt64,
     retry_on_failure::Bool, memory_space::Int64, result::Ptr{SE_ScopedDeviceMemory},
@@ -145,6 +182,8 @@ end
 
 Base.cconvert(::Type{Ptr{SE_DeviceMemoryAllocator}}, x::SE_DeviceMemoryAllocator) = Ref(x)
 
+# executable
+
 mutable struct TpuExecutable
     handle::Ptr{SE_Executable}
     function TpuExecutable(handle::Ptr{Cvoid})
@@ -156,18 +195,7 @@ end
 
 Base.unsafe_convert(::Type{Ptr{SE_Executable}}, x::TpuExecutable) = x.handle
 
-mutable struct TpuStream
-    handle::Ptr{SE_Stream}
-    function TpuStream(parent::TpuExecutor)
-        @new_with_finalizer(TpuStream_New(parent))
-    end
-end
-
-Base.unsafe_convert(::Type{Ptr{SE_Stream}}, x::TpuStream) = x.handle
-
-TpuSerializedProto() = TpuSerializedProto(C_NULL, 0)
-
-Base.zero(::Type{XLA_Tile}) = XLA_Tile(Int64List())
+# layout
 
 XLA_Layout() = XLA_Layout(0, Int64List(), TileList(), 0, 0)
 
@@ -179,6 +207,8 @@ function Base.convert(::Type{XLA_Layout}, layout::Layout)
         haskey(fields, :element_size_in_bits) ? layout.element_size_in_bits : 0,
         haskey(fields, :memory_space) ? layout.memory_space : 0)
 end
+
+# shape
 
 XLA_Shape() = XLA_Shape(0, Int64List(), BoolList(), (), 0, XLA_Layout())
 
@@ -198,6 +228,8 @@ function Base.convert(::Type{XLA_Shape}, shape::Shape)
     )
 end
 
+# computation layout
+
 function Base.convert(::Type{XLA_ComputationLayout}, pshape::ProgramShape)
     parameters = nothing
     if length(pshape.parameters) != 0
@@ -213,9 +245,10 @@ function Base.convert(::Type{XLA_ComputationLayout}, pshape::ProgramShape)
     )
 end
 
+# driver
+
 function run_backend!(compiler::TpuCompiler, mod::XLA.HloModuleProto,
-                  exec::TpuExecutor,
-                  allocator::SE_DeviceMemoryAllocator)
+                      exec::TpuExecutor, allocator::SE_DeviceMemoryAllocator)
     buf = IOBuffer()
     writeproto(buf, mod)
     module_serialized = take!(buf)
@@ -273,6 +306,25 @@ function shape_size(compiler::TpuCompiler, shape::XLA_Shape)
     TpuCompiler_ShapeSize(compiler, rshape)
 end
 
+
+## stream
+
+export TpuStream
+
+mutable struct TpuStream
+    handle::Ptr{SE_Stream}
+    function TpuStream(parent::TpuExecutor)
+        @new_with_finalizer(TpuStream_New(parent))
+    end
+end
+
+Base.unsafe_convert(::Type{Ptr{SE_Stream}}, x::TpuStream) = x.handle
+
+
+## execution
+
+export execute_async!
+
 function SE_ExecutableRunOptions(allocator::SE_DeviceMemoryAllocator,
     stream::TpuStream, host_to_device_stream::Union{TpuStream, Nothing};
     device_ordinal=0, rng_seed=0, run_id=0, launch_id=0)
@@ -300,6 +352,11 @@ function execute_async!(executable::TpuExecutable, options::SE_ExecutableRunOpti
     output[]
 end
 
+
+## memory copying
+
+export unsafe_copyto_async!
+
 function unsafe_copyto_async!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor, stream::TpuStream)
     rdst = Ref{SE_DeviceMemoryBase}(dst)
     TpuExecutor_MemcpyFromHost(exec, stream, rdst, src, size)
@@ -319,6 +376,13 @@ function Base.unsafe_copyto!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Cs
     rsrc = Ref{SE_DeviceMemoryBase}(src)
     TpuExecutor_SynchronousMemcpyToHost(exec, dst, rsrc, size)
 end
+
+
+################################################################################
+
+TpuSerializedProto() = TpuSerializedProto(C_NULL, 0)
+
+Base.zero(::Type{XLA_Tile}) = XLA_Tile(Int64List())
 
 for (T, sym) in
     ((TpuStatus, :TpuStatus_Free),
