@@ -114,7 +114,7 @@ Core.Compiler.OptimizationParams(ni::GPUInterpreter) = ni.opt_params
 Core.Compiler.may_optimize(ni::GPUInterpreter) = true
 Core.Compiler.may_compress(ni::GPUInterpreter) = false
 Core.Compiler.may_discard_trees(ni::GPUInterpreter) = false
-Core.Compiler.needs_widened_types(ni::GPUInterpreter) = false
+#Core.Compiler.needs_widened_types(ni::GPUInterpreter) = false
 Core.Compiler.add_remark!(ni::GPUInterpreter, sv::InferenceState, msg) = nothing # TODO
 
 
