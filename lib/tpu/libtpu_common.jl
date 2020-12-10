@@ -106,9 +106,6 @@ struct SE_DeviceMemoryAllocator
     ctx::Ptr{Cvoid}
     allocate::SE_AllocateFn
     deallocate::SE_DeallocateFn
-
-    # HACK: roots?
-    # _platform::TpuPlatform
 end
 
 struct SE_DeviceDescription
@@ -146,7 +143,7 @@ end
 struct Tpu_Compiler end
 struct SE_Executable end
 
-mutable struct SE_ExecutableRunOptions
+struct SE_ExecutableRunOptions
     allocator::SE_DeviceMemoryAllocator
     device_ordinal::Cint
     stream::Ptr{SE_Stream}
@@ -155,17 +152,11 @@ mutable struct SE_ExecutableRunOptions
     rng_seed::Cint
     run_id::Int64
     launch_id::Cint
-
-    # HACK: roots
-    _stream
-    _host_to_device_stream
 end
 
 struct SE_MaybeOwningDeviceMemory
     memory::SE_DeviceMemoryBase
     owned::Bool
-
-    # Set if owned
     device_ordinal::Cint
     allocator::SE_DeviceMemoryAllocator
 end

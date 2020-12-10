@@ -171,6 +171,8 @@ Base.unsafe_convert(::Type{Ptr{Tpu_Compiler}}, x::TpuCompiler) = x.handle
 
 # allocator
 
+export TpuDeviceMemoryAllocator
+
 function device_allocate(ctx::Ptr{Cvoid}, device_ordinal::Cint, size::UInt64,
     retry_on_failure::Bool, memory_space::Int64, result::Ptr{SE_ScopedDeviceMemory},
     status::Ptr{Cvoid})
@@ -186,16 +188,30 @@ function device_deallocate(ctx::Ptr{Cvoid}, base::Ptr{SE_ScopedDeviceMemory},
     error("Unimplemented")
 end
 
-function SE_DeviceMemoryAllocator(platform::TpuPlatform, executor::TpuExecutor)
-    SE_DeviceMemoryAllocator(
-        Base.unsafe_convert(Ptr{Cvoid}, platform),
-        pointer_from_objref(executor),
-        @cfunction(device_allocate, Cvoid, (Ptr{Cvoid}, Cint, UInt64, Bool, Int64, Ptr{SE_ScopedDeviceMemory}, Ptr{Cvoid})),
-        @cfunction(device_deallocate, Cvoid, (Ptr{Cvoid}, Cint, UInt64, Bool, Int64, Ptr{SE_ScopedDeviceMemory}, Ptr{Cvoid})),
-    )
+struct TpuDeviceMemoryAllocator
+    handle::SE_DeviceMemoryAllocator
+
+    platform::TpuPlatform
+    executor::TpuExecutor
+
+    function TpuDeviceMemoryAllocator(platform::TpuPlatform, executor::TpuExecutor)
+        handle = SE_DeviceMemoryAllocator(
+            Base.unsafe_convert(Ptr{SE_Platform}, platform),
+            pointer_from_objref(executor),
+            @cfunction(device_allocate, Cvoid, (Ptr{Cvoid}, Cint, UInt64, Bool, Int64, Ptr{SE_ScopedDeviceMemory}, Ptr{Cvoid})),
+            @cfunction(device_deallocate, Cvoid, (Ptr{Cvoid}, Cint, UInt64, Bool, Int64, Ptr{SE_ScopedDeviceMemory}, Ptr{Cvoid})),
+        )
+        new(handle, platform, executor)
+    end
 end
 
-Base.cconvert(::Type{Ptr{SE_DeviceMemoryAllocator}}, x::SE_DeviceMemoryAllocator) = Ref(x)
+Base.unsafe_convert(T::Type{SE_DeviceMemoryAllocator}, x::TpuDeviceMemoryAllocator) =
+    x.handle
+
+Base.cconvert(::Type{Ptr{SE_DeviceMemoryAllocator}}, x::TpuDeviceMemoryAllocator) =
+    Ref(x.handle)
+
+
 
 # executable
 
@@ -263,7 +279,7 @@ end
 # driver
 
 function run_backend!(compiler::TpuCompiler, mod::XLA.HloModuleProto,
-                      exec::TpuExecutor, allocator::SE_DeviceMemoryAllocator)
+                      exec::TpuExecutor, allocator::TpuDeviceMemoryAllocator)
     buf = IOBuffer()
     writeproto(buf, mod)
     module_serialized = take!(buf)
@@ -285,7 +301,7 @@ end
 
 function compile!(compiler::TpuCompiler, module_group::XLA.HloModuleGroupProto,
                   execs::Vector{Vector{TpuExecutor}},
-                  allocator::SE_DeviceMemoryAllocator)
+                  allocator::TpuDeviceMemoryAllocator)
     buf = IOBuffer()
     writeproto(buf, module_group)
     module_group_serialized = take!(buf)
@@ -336,41 +352,49 @@ end
 Base.unsafe_convert(::Type{Ptr{SE_Stream}}, x::TpuStream) = x.handle
 
 
-## execution
-
-export execute_async!
-
-function SE_ExecutableRunOptions(allocator::SE_DeviceMemoryAllocator,
-    stream::TpuStream, host_to_device_stream::Union{TpuStream, Nothing};
-    device_ordinal=0, rng_seed=0, run_id=0, launch_id=0)
-
-    SE_ExecutableRunOptions(allocator, device_ordinal, Base.unsafe_convert(Ptr{Cvoid}, stream),
-        host_to_device_stream === nothing ? C_NULL :
-            Base.unsafe_convert(Ptr{Cvoid}, host_to_device_stream),
-        TpuSerializedProto(),
-        rng_seed, run_id, launch_id,
-        stream, host_to_device_stream
-    )
-end
-
-XLA_ShapedBuffer() = XLA_ShapedBuffer(XLA_Shape(), 0, C_NULL, 0)
-
-SE_ExecutionOutput() = SE_ExecutionOutput(XLA_ShapedBuffer(), C_NULL, 0, C_NULL, 0)
-
-function execute_async!(executable::TpuExecutable, options::SE_ExecutableRunOptions,
-                        arguments::Vector{SE_ExecutionInput})
-    output = Ref(SE_ExecutionOutput())
-    with_status() do s
-        TpuExecutable_ExecuteAsyncOnStream(executable, Ref(options), Ref.(arguments),
-                                           length(arguments), C_NULL, output, s)
-    end
-    output[]
-end
-
-
 ## memory copying
 
-export unsafe_copyto_async!
+export TpuMaybeOwningDeviceMemory, TpuMaybeOwningDeviceMemoryShapeTree, unsafe_copyto_async!
+
+struct TpuMaybeOwningDeviceMemory
+    handle::SE_MaybeOwningDeviceMemory
+
+    allocator::TpuDeviceMemoryAllocator
+
+    function TpuMaybeOwningDeviceMemory(memory::SE_DeviceMemoryBase, owned::Bool,
+                                        device_ordinal::Int, allocator::TpuDeviceMemoryAllocator)
+        handle = SE_MaybeOwningDeviceMemory(memory, owned, device_ordinal,
+            Base.unsafe_convert(SE_DeviceMemoryAllocator, allocator))
+        new(handle, allocator)
+    end
+end
+
+Base.cconvert(T::Type{Ptr{SE_MaybeOwningDeviceMemory}}, x::TpuMaybeOwningDeviceMemory) =
+    Ref(x.handle)
+
+Base.unsafe_convert(T::Type{SE_MaybeOwningDeviceMemory}, x::TpuMaybeOwningDeviceMemory) =
+    x.handle
+
+struct TpuMaybeOwningDeviceMemoryShapeTree
+    handle::XLA_MaybeOwningDeviceMemoryShapeTree
+
+    buffers::Vector{TpuMaybeOwningDeviceMemory}
+    ptrs::Vector{SE_MaybeOwningDeviceMemory}
+
+    function TpuMaybeOwningDeviceMemoryShapeTree(shape::XLA_Shape, buffers::Vector{TpuMaybeOwningDeviceMemory})
+        ptrs = [Base.unsafe_convert(SE_MaybeOwningDeviceMemory, buffer) for buffer in buffers]
+        handle = XLA_MaybeOwningDeviceMemoryShapeTree(shape, pointer(ptrs))
+        new(handle, buffers, ptrs)
+    end
+end
+
+Base.cconvert(T::Type{Ptr{XLA_MaybeOwningDeviceMemoryShapeTree}},
+              x::TpuMaybeOwningDeviceMemoryShapeTree) =
+    Ref(x.handle)
+
+Base.unsafe_convert(T::Type{XLA_MaybeOwningDeviceMemoryShapeTree},
+                    x::TpuMaybeOwningDeviceMemoryShapeTree) =
+    x.handle
 
 function unsafe_copyto_async!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor, stream::TpuStream)
     rdst = Ref{SE_DeviceMemoryBase}(dst)
@@ -390,6 +414,73 @@ end
 function Base.unsafe_copyto!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor)
     rsrc = Ref{SE_DeviceMemoryBase}(src)
     TpuExecutor_SynchronousMemcpyToHost(exec, dst, rsrc, size)
+end
+
+
+## execution
+
+export TpuExecutableRunOptions, TpuExecutionInput, execute_async!
+
+struct TpuExecutableRunOptions
+    handle::SE_ExecutableRunOptions
+
+    allocator::TpuDeviceMemoryAllocator
+    stream::TpuStream
+    host_to_device_stream::Union{TpuStream, Nothing}
+
+    function TpuExecutableRunOptions(allocator::TpuDeviceMemoryAllocator,
+                                     stream::TpuStream,
+                                     host_to_device_stream::Union{TpuStream, Nothing};
+                                     device_ordinal=0, rng_seed=0, run_id=0, launch_id=0)
+        handle = SE_ExecutableRunOptions(
+            Base.unsafe_convert(SE_DeviceMemoryAllocator, allocator),
+            device_ordinal,
+            Base.unsafe_convert(Ptr{SE_Stream}, stream),
+            host_to_device_stream === nothing ? C_NULL :
+                Base.unsafe_convert(Ptr{SE_Stream}, host_to_device_stream),
+            TpuSerializedProto(), rng_seed, run_id, launch_id
+        )
+        new(handle, allocator, stream, host_to_device_stream)
+    end
+end
+
+Base.cconvert(T::Type{Ptr{SE_ExecutableRunOptions}}, x::TpuExecutableRunOptions) =
+    Ref(x.handle)
+
+Base.unsafe_convert(T::Type{SE_ExecutableRunOptions}, x::TpuExecutableRunOptions) =
+    x.handle
+
+struct TpuExecutionInput
+    handle::SE_ExecutionInput
+
+    shape_tree::TpuMaybeOwningDeviceMemoryShapeTree
+    unowned_indices::Vector{Cint}
+
+    function TpuExecutionInput(shape_tree, unowned_indices::Vector, dynamic_shape::XLA_Shape)
+        unowned_indices = convert(Vector{Cint}, unowned_indices)
+        handle = SE_ExecutionInput(
+            Base.unsafe_convert(XLA_MaybeOwningDeviceMemoryShapeTree, shape_tree),
+            isempty(unowned_indices) ? C_NULL : pointer(unowned_indices),
+            length(unowned_indices),
+            dynamic_shape)
+        new(handle, shape_tree, unowned_indices)
+    end
+end
+
+Base.cconvert(::Type{Ptr{SE_ExecutionInput}}, x::TpuExecutionInput) = Ref(x.handle)
+
+XLA_ShapedBuffer() = XLA_ShapedBuffer(XLA_Shape(), 0, C_NULL, 0)
+
+SE_ExecutionOutput() = SE_ExecutionOutput(XLA_ShapedBuffer(), C_NULL, 0, C_NULL, 0)
+
+function execute_async!(executable::TpuExecutable, options::TpuExecutableRunOptions,
+                        arguments::Vector{TpuExecutionInput})
+    output = Ref(SE_ExecutionOutput())
+    with_status() do s
+        TpuExecutable_ExecuteAsyncOnStream(executable, options, arguments,
+                                           length(arguments), C_NULL, output, s)
+    end
+    output[]
 end
 
 
