@@ -175,8 +175,6 @@ function device_allocate(ctx::Ptr{Cvoid}, device_ordinal::Cint, size::UInt64,
     retry_on_failure::Bool, memory_space::Int64, result::Ptr{SE_ScopedDeviceMemory},
     status::Ptr{Cvoid})
 
-    ccall(:jl_, Cvoid, (Any,), ("XXXXXXX", size))
-
     executor = unsafe_pointer_to_objref(ctx)::TpuExecutor
     mem = allocate!(executor, size, memory_space)
     unsafe_store!(result, SE_ScopedDeviceMemory(mem, device_ordinal))
