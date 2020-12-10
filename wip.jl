@@ -3,7 +3,7 @@ using XLA, ProtoBuf
 
 using .LibTPU
 using .LibTPU: TpuPlatform, TpuExecutor, TpuCompiler, initialize!, run_backend!,
-    SEDeviceMemoryAllocator, compile!, SE_ExecutableRunOptions, TpuStream,
+    SE_DeviceMemoryAllocator, compile!, SE_ExecutableRunOptions, TpuStream,
     execute_async!, SE_ExecutionInput, shape_size, SE_MaybeOwningDeviceMemory,
     unsafe_copyto_async!, XLA_MaybeOwningDeviceMemoryShapeTree
 
@@ -20,7 +20,7 @@ hlo_module_group, rt = XLA.compile_to_xla(ir, nothing)
 
 stream = TpuStream(exec)
 
-allocator = SEDeviceMemoryAllocator(p, exec)
+allocator = SE_DeviceMemoryAllocator(p, exec)
 executable = compile!(compiler, hlo_module_group, [[exec]], allocator)[]
 
 xs = convert(LibTPU.XLA_Shape, XLA.Shape(Float32, (1024, 1024)))
