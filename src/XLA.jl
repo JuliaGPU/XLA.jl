@@ -18,11 +18,14 @@ module XLA
     struct XRTAllocation
     end
 
+    include("../lib/tpu/LibTPU.jl")
+    using .LibTPU
+    export LibTPU
+
     #include("xrt.jl")
     include("xrtarray.jl")
     #include("topology.jl")
     #include("multicore.jl")
-    include("libtpu.jl")
     include("hlo.jl")
     include("shape_infer.jl")
     include("execute.jl")
