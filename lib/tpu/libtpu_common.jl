@@ -232,14 +232,14 @@ struct XLA_ShapeIndex
     count::Int64
 end
 
-mutable struct SE_ExecutionInput    # HACK
+struct SE_ExecutionInput
     shape_tree::XLA_MaybeOwningDeviceMemoryShapeTree
     unowned_indices::Ptr{XLA_ShapeIndex}
     unowned_indices_size::Cint
     dynamic_shape::XLA_Shape
 end
 
-mutable struct SE_ExecutionOutput   # HACK
+struct SE_ExecutionOutput
     result::XLA_ShapedBuffer
     to_be_released::Ptr{SE_MaybeOwningDeviceMemory}
     to_be_released_size::Cint
