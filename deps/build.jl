@@ -1,4 +1,4 @@
-using Pkg, JSON, HTTP, Tar, Artifacts
+using Pkg, JSON, HTTP, Tar, CodecZlib, Artifacts
 
 const Artifacts_toml = joinpath(@__DIR__, "../Artifacts.toml")
 const libtpu_tag = "libtpu_20201211_RC00"
@@ -14,12 +14,8 @@ let libtpu_hash = Artifacts.artifact_hash("libtpu", Artifacts_toml)
 
             blob = HTTP.get("https://$(creds["Username"]):$(creds["Secret"])@gcr.io/v2/cloud-tpu-v2-images/libtpu/blobs/$blobsum")
 
-            #Tar.extract(IOBuffer(blob.body), path)
-            mktemp() do tmp, f
-                write(f, blob.body)
-                close(f)
-                run(`tar -C $path -xf $tmp`)
-            end
+            stream = GzipDecompressorStream(IOBuffer(blob.body))
+            Tar.extract(stream, path)
         end
         if new_hash !== libtpu_hash
             error("Download of libtpu docker image did not yield artifact with correct hash. New hash is `$(new_hash)`.")
