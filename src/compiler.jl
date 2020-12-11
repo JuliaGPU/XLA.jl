@@ -431,3 +431,43 @@ function dtype_to_shape(T::DataType; tensorflow_order=false)
         tuple_shapes = collect(dtype_to_shape(fieldtype(T, i); tensorflow_order=tensorflow_order) for i = 1:fieldcount(T) if representable(fieldtype(T, i)))
     )
 end
+
+
+## IR showing
+
+# some simple show methods for serialized HLO IR
+
+function Base.show(io::IO, x::xla.HloModuleGroupProto)
+    println(io, "; module group '$(x.name)'")
+    for hlo_module in x.hlo_modules
+        println(io)
+        println(io, hlo_module)
+    end
+end
+
+function Base.show(io::IO, x::xla.HloModuleProto)
+    println(io, "; module '$(x.name)'")
+    for comp in x.computations
+        println(io)
+        if comp.name == x.entry_computation_name
+            print(io, "entry ")
+        end
+        println(io, comp)
+    end
+end
+
+function Base.show(io::IO, x::xla.HloComputationProto)
+    println(io, "computation @$(x.name) {")
+    for inst in x.instructions
+        println(io, "  ", inst)
+    end
+    print(io, "}")
+end
+
+function Base.show(io::IO, x::xla.HloInstructionProto)
+    print(io, "%$(x.id).$(x.name) = $(x.opcode)($(join(map(id->"%$(id)", x.operand_ids), ", "))) : $(x.shape)")
+end
+
+function Base.show(io::IO, x::xla.ShapeProto)
+    print(io, xla_type_mapping[x.element_type], "[", join(x.dimensions, ", "), "]")
+end

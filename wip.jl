@@ -15,11 +15,14 @@ initialize!(exec)
 # compile
 
 f = identity
-tt = XRTArray{Float32, (1024, 1024), 2}
+tt = Tuple{XRTArray{Float32, (1024, 1024), 2}}
+sig = Base.signature_type(f, tt)
 
 interp = XLA.GPUInterpreter(Base.get_world_counter())
-ir = XLA.compile_sig(interp, Tuple{typeof(f), tt})
+ir = XLA.compile_sig(interp, sig)
+println("Generated Julia IR:\n", ir)
 hlo_module_group, rt = XLA.compile_to_xla(ir, nothing)
+println("Generated HLO modules:\n", hlo_module_group)
 
 compiler = TpuCompiler()
 allocator = TpuDeviceMemoryAllocator(p, exec)
