@@ -709,7 +709,7 @@ function meta(::Type{LiteralProto})
             __meta_LiteralProto[] = target = ProtoMeta(LiteralProto)
             fnum = Int[1,2,15,3,4,5,6,7,8,9,12,18,10,11,13,16,17,14]
             pack = Symbol[:preds,:s32s,:s64s,:u32s,:u64s,:f32s,:f64s,:c64s,:c128s,:sparse_indices]
-            allflds = Pair{Symbol,Union{Type,String}}[:shape => ShapeProto, :preds => Base.Vector{Bool}, :s8s => Vector{UInt8}, :u8s => Vector{UInt8}, :s32s => Base.Vector{Int32}, :s64s => Base.Vector{Int64}, :u32s => Base.Vector{UInt32}, :u64s => Base.Vector{UInt64}, :f32s => Base.Vector{Float32}, :f64s => Base.Vector{Float64}, :c64s => Base.Vector{Float32}, :c128s => Base.Vector{Float64}, :tuple_literals => Base.Vector{LiteralProto}, :f16s => Vector{UInt8}, :bf16s => Vector{UInt8}, :u16s => Vector{UInt8}, :s16s => Vector{UInt8}, :sparse_indices => Base.Vector{Int64}]
+            allflds = Pair{Symbol,Union{Type,String}}[:shape => ShapeProto, :preds => Base.Vector{Bool}, :s8s => Array{UInt8,1}, :u8s => Array{UInt8,1}, :s32s => Base.Vector{Int32}, :s64s => Base.Vector{Int64}, :u32s => Base.Vector{UInt32}, :u64s => Base.Vector{UInt64}, :f32s => Base.Vector{Float32}, :f64s => Base.Vector{Float64}, :c64s => Base.Vector{Float32}, :c128s => Base.Vector{Float64}, :tuple_literals => Base.Vector{LiteralProto}, :f16s => Array{UInt8,1}, :bf16s => Array{UInt8,1}, :u16s => Array{UInt8,1}, :s16s => Array{UInt8,1}, :sparse_indices => Base.Vector{Int64}]
             meta(target, LiteralProto, allflds, ProtoBuf.DEF_REQ, fnum, ProtoBuf.DEF_VAL, pack, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES)
         end
         __meta_LiteralProto[]
@@ -721,9 +721,9 @@ function Base.getproperty(obj::LiteralProto, name::Symbol)
     elseif name === :preds
         return (obj.__protobuf_jl_internal_values[name])::Base.Vector{Bool}
     elseif name === :s8s
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :u8s
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :s32s
         return (obj.__protobuf_jl_internal_values[name])::Base.Vector{Int32}
     elseif name === :s64s
@@ -743,13 +743,13 @@ function Base.getproperty(obj::LiteralProto, name::Symbol)
     elseif name === :tuple_literals
         return (obj.__protobuf_jl_internal_values[name])::Base.Vector{LiteralProto}
     elseif name === :f16s
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :bf16s
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :u16s
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :s16s
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :sparse_indices
         return (obj.__protobuf_jl_internal_values[name])::Base.Vector{Int64}
     else

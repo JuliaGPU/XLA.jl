@@ -74,7 +74,7 @@ function meta(::Type{HloInstructionProto})
             __meta_HloInstructionProto[] = target = ProtoMeta(HloInstructionProto)
             fnum = Int[1,2,3,7,8,9,11,13,14,15,16,50,58,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,63,33,34,41,42,35,36,37,38,40,43,49,45,71,47,60,48,51,52,54,55,56,57,59,62,61,64,65,74,66,67,68,69,70,72,73,75]
             pack = Symbol[:dimensions,:dynamic_slice_sizes,:fft_length,:gather_slice_sizes,:operand_ids,:control_predecessor_ids,:called_computation_ids,:outer_dimension_partitions]
-            allflds = Pair{Symbol,Union{Type,String}}[:name => AbstractString, :opcode => AbstractString, :shape => ShapeProto, :metadata => OpMetadata, :literal => LiteralProto, :parameter_number => Int64, :fusion_kind => AbstractString, :tuple_index => Int64, :dimensions => Base.Vector{Int64}, :window => Window, :convolution_dimension_numbers => ConvolutionDimensionNumbers, :feature_group_count => Int64, :batch_group_count => Int64, :slice_dimensions => Base.Vector{HloInstructionProto_SliceDimensions}, :exponent_bits => Int32, :mantissa_bits => Int32, :dynamic_slice_sizes => Base.Vector{Int64}, :padding_config => PaddingConfig, :outfeed_config => Vector{UInt8}, :distribution => Int32, :epsilon => Float32, :feature_index => Int64, :channel_id => Int64, :infeed_config => Vector{UInt8}, :custom_call_target => AbstractString, :outfeed_shape => ShapeProto, :dot_dimension_numbers => DotDimensionNumbers, :fft_type => Int32, :fft_length => Base.Vector{Int64}, :comparison_direction => AbstractString, :gather_dimension_numbers => GatherDimensionNumbers, :gather_slice_sizes => Base.Vector{Int64}, :channel_name => AbstractString, :cost_estimate_ns => Int64, :id => Int64, :operand_ids => Base.Vector{Int64}, :control_predecessor_ids => Base.Vector{Int64}, :called_computation_ids => Base.Vector{Int64}, :sharding => OpSharding, :backend_config => Vector{UInt8}, :replica_groups => Base.Vector{ReplicaGroup}, :all_reduce_id => Int64, :use_global_device_ids => Bool, :is_host_transfer => Bool, :is_stable => Bool, :scatter_dimension_numbers => ScatterDimensionNumbers, :precision_config => PrecisionConfig, :source_target_pairs => Base.Vector{SourceTarget}, :domain_entry_sharding => OpSharding, :domain_exit_sharding => OpSharding, :constrain_layout => Bool, :operand_shapes_with_layout => Base.Vector{ShapeProto}, :triangular_solve_options => TriangularSolveOptions, :cholesky_options => CholeskyOptions, :parameter_replication => ParameterReplication, :outer_dimension_partitions => Base.Vector{Int64}, :custom_call_has_side_effect => Bool, :custom_call_output_operand_aliasing => Base.Vector{CustomCallOutputOperandAliasing}, :delta => Int64, :indices_are_sorted => Bool, :frontend_attributes => FrontendAttributes, :unique_indices => Bool, :rng_algorithm => Int32, :comparison_type => AbstractString, :is_cross_program_prefetch => Bool, :padding_type => Int32]
+            allflds = Pair{Symbol,Union{Type,String}}[:name => AbstractString, :opcode => AbstractString, :shape => ShapeProto, :metadata => OpMetadata, :literal => LiteralProto, :parameter_number => Int64, :fusion_kind => AbstractString, :tuple_index => Int64, :dimensions => Base.Vector{Int64}, :window => Window, :convolution_dimension_numbers => ConvolutionDimensionNumbers, :feature_group_count => Int64, :batch_group_count => Int64, :slice_dimensions => Base.Vector{HloInstructionProto_SliceDimensions}, :exponent_bits => Int32, :mantissa_bits => Int32, :dynamic_slice_sizes => Base.Vector{Int64}, :padding_config => PaddingConfig, :outfeed_config => Array{UInt8,1}, :distribution => Int32, :epsilon => Float32, :feature_index => Int64, :channel_id => Int64, :infeed_config => Array{UInt8,1}, :custom_call_target => AbstractString, :outfeed_shape => ShapeProto, :dot_dimension_numbers => DotDimensionNumbers, :fft_type => Int32, :fft_length => Base.Vector{Int64}, :comparison_direction => AbstractString, :gather_dimension_numbers => GatherDimensionNumbers, :gather_slice_sizes => Base.Vector{Int64}, :channel_name => AbstractString, :cost_estimate_ns => Int64, :id => Int64, :operand_ids => Base.Vector{Int64}, :control_predecessor_ids => Base.Vector{Int64}, :called_computation_ids => Base.Vector{Int64}, :sharding => OpSharding, :backend_config => Array{UInt8,1}, :replica_groups => Base.Vector{ReplicaGroup}, :all_reduce_id => Int64, :use_global_device_ids => Bool, :is_host_transfer => Bool, :is_stable => Bool, :scatter_dimension_numbers => ScatterDimensionNumbers, :precision_config => PrecisionConfig, :source_target_pairs => Base.Vector{SourceTarget}, :domain_entry_sharding => OpSharding, :domain_exit_sharding => OpSharding, :constrain_layout => Bool, :operand_shapes_with_layout => Base.Vector{ShapeProto}, :triangular_solve_options => TriangularSolveOptions, :cholesky_options => CholeskyOptions, :parameter_replication => ParameterReplication, :outer_dimension_partitions => Base.Vector{Int64}, :custom_call_has_side_effect => Bool, :custom_call_output_operand_aliasing => Base.Vector{CustomCallOutputOperandAliasing}, :delta => Int64, :indices_are_sorted => Bool, :frontend_attributes => FrontendAttributes, :unique_indices => Bool, :rng_algorithm => Int32, :comparison_type => AbstractString, :is_cross_program_prefetch => Bool, :padding_type => Int32]
             meta(target, HloInstructionProto, allflds, ProtoBuf.DEF_REQ, fnum, ProtoBuf.DEF_VAL, pack, ProtoBuf.DEF_WTYPES, ProtoBuf.DEF_ONEOFS, ProtoBuf.DEF_ONEOF_NAMES)
         end
         __meta_HloInstructionProto[]
@@ -118,7 +118,7 @@ function Base.getproperty(obj::HloInstructionProto, name::Symbol)
     elseif name === :padding_config
         return (obj.__protobuf_jl_internal_values[name])::PaddingConfig
     elseif name === :outfeed_config
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :distribution
         return (obj.__protobuf_jl_internal_values[name])::Int32
     elseif name === :epsilon
@@ -128,7 +128,7 @@ function Base.getproperty(obj::HloInstructionProto, name::Symbol)
     elseif name === :channel_id
         return (obj.__protobuf_jl_internal_values[name])::Int64
     elseif name === :infeed_config
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :custom_call_target
         return (obj.__protobuf_jl_internal_values[name])::AbstractString
     elseif name === :outfeed_shape
@@ -160,7 +160,7 @@ function Base.getproperty(obj::HloInstructionProto, name::Symbol)
     elseif name === :sharding
         return (obj.__protobuf_jl_internal_values[name])::OpSharding
     elseif name === :backend_config
-        return (obj.__protobuf_jl_internal_values[name])::Vector{UInt8}
+        return (obj.__protobuf_jl_internal_values[name])::Array{UInt8,1}
     elseif name === :replica_groups
         return (obj.__protobuf_jl_internal_values[name])::Base.Vector{ReplicaGroup}
     elseif name === :all_reduce_id

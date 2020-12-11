@@ -2,7 +2,7 @@ using Clang
 
 # FIXME: TensorFlow uses `extern c` without `ifdef __cplusplus`; remove those manually
 
-function wrap(tensorflow)
+function wrap_api(tensorflow)
     headers = [
         # "$tensorflow/tensorflow/stream_executor/tpu/c_api_defn.h",
         "$tensorflow/tensorflow/stream_executor/tpu/c_api_decl.h",
@@ -31,6 +31,22 @@ function wrap(tensorflow)
     run(context)
 end
 
+
+using ProtoBuf
+
+function wrap_protos(tensorflow)
+    out = joinpath(dirname(@__DIR__), "gen")
+
+    xrt_proto = joinpath(tensorflow, "tensorflow/compiler/xrt/xrt.proto")
+    @assert ispath(xrt_proto)
+    ProtoBuf.protoc(`-I=$tensorflow --julia_out=$out/xrt $xrt_proto`)
+
+    #topo_proto = joinpath(tensorflow, "tensorflow/core/protobuf/tpu/topology.proto")
+    #@assert ispath(topo_proto)
+    #ProtoBuf.protoc(`-I=$tensorflow --julia_out=$out/topo $topo_proto`)
+end
+
+
 function main()
     tf_checkout = joinpath(tempdir(), "tensorflow")
     if !isdir(tf_checkout)
@@ -40,8 +56,10 @@ function main()
     end
 
     cd(joinpath(dirname(@__DIR__), "lib/tpu")) do
-        wrap(tf_checkout)
+        wrap_libtpu(tf_checkout)
     end
+
+    wrap_protos(tf_checkout)
 end
 
 isinteractive() || main()
