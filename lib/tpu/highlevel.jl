@@ -21,7 +21,7 @@ let initialized = false
     global initialize_tpu_runtime
     function initialize_tpu_runtime()
         if !initialized
-            args = ["--install_signal_handlers=0"]
+            args = ["--install_signal_handlers=0"; split(get(ENV, "JULIA_LIBTPU_ARGS", ""))]
             @ccall libtpu.TfTpu_Initialize(true::Bool, length(args)::Cint, args::Ptr{Cstring})::Cvoid
             initialized = true
         end
