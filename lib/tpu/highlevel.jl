@@ -408,12 +408,16 @@ end
 
 function Base.unsafe_copyto!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor)
     rdst = Ref{SE_DeviceMemoryBase}(dst)
-    TpuExecutor_SynchronousMemcpyFromHost(exec, rdst, src, size)
+    with_status() do status
+        TpuExecutor_SynchronousMemcpyFromHost(exec, rdst, src, size, status)
+    end
 end
 
 function Base.unsafe_copyto!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor)
     rsrc = Ref{SE_DeviceMemoryBase}(src)
-    TpuExecutor_SynchronousMemcpyToHost(exec, dst, rsrc, size)
+    with_status() do status
+        TpuExecutor_SynchronousMemcpyToHost(exec, dst, rsrc, size, status)
+    end
 end
 
 
