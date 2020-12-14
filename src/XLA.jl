@@ -1,6 +1,8 @@
 module XLA
     using ProtoBuf
 
+    using XLA_Tools_jll
+
     import Base: run
 
     # Load generated xla protobuf definitions

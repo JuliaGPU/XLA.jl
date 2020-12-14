@@ -435,39 +435,44 @@ end
 
 ## IR showing
 
-# some simple show methods for serialized HLO IR
+function code_hlo(io::IO, hlo_module::HloModuleProto)
+    mktemp() do hlo_path, hlo_io
+        hlo = XLA.HloProto(
+            hlo_module = hlo_module
+        )
+        hlo_snap = XLA.HloSnapshot(
+            hlo = hlo
+        )
+        writeproto(hlo_io, hlo_snap)
+        flush(hlo_io)
 
-function Base.show(io::IO, x::xla.HloModuleGroupProto)
-    println(io, "; module group '$(x.name)'")
-    for hlo_module in x.hlo_modules
-        println(io)
-        println(io, hlo_module)
-    end
-end
-
-function Base.show(io::IO, x::xla.HloModuleProto)
-    println(io, "; module '$(x.name)'")
-    for comp in x.computations
-        println(io)
-        if comp.name == x.entry_computation_name
-            print(io, "entry ")
+        XLA_Tools_jll.dumped_computation_to_text() do cmd_path
+            run(pipeline(`$cmd_path $hlo_path`, stderr=devnull, stdout=io))
         end
-        println(io, comp)
     end
 end
 
-function Base.show(io::IO, x::xla.HloComputationProto)
-    println(io, "computation @$(x.name) {")
-    for inst in x.instructions
-        println(io, "  ", inst)
+function code_hlo(io::IO, hlo_module_group::HloModuleGroupProto)
+    for hlo_module in hlo_module_group.hlo_modules
+        code_hlo(io, hlo_module)
     end
-    print(io, "}")
 end
 
-function Base.show(io::IO, x::xla.HloInstructionProto)
-    print(io, "%$(x.id).$(x.name) = $(x.opcode)($(join(map(id->"%$(id)", x.operand_ids), ", "))) : $(x.shape)")
-end
+code_hlo(hlo; kwargs...) = code_hlo(stdout, hlo; kwargs...)
 
-function Base.show(io::IO, x::xla.ShapeProto)
-    print(io, xla_type_mapping[x.element_type], "[", join(x.dimensions, ", "), "]")
-end
+# some simple show methods for protos to avoid ginormous dumps to standard out
+
+Base.show(io::IO, x::xla.HloModuleGroupProto) =
+    print(io, "HloModuleGroupProto(name=$(x.name))")
+
+Base.show(io::IO, x::xla.HloModuleProto) =
+    print(io, "HloModuleProto(name=$(x.name))")
+
+Base.show(io::IO, x::xla.HloComputationProto) =
+    print(io, "HloComputationProto(name=$(x.name))")
+
+Base.show(io::IO, x::xla.HloInstructionProto) =
+    print(io, "HloInstructionProto(name=$(x.name))")
+
+Base.show(io::IO, x::xla.ShapeProto) =
+    print(io, "ShapeProto(", xla_type_mapping[x.element_type], "[", join(x.dimensions, ", "), "])")
