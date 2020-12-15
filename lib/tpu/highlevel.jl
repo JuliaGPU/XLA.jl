@@ -1,162 +1,3 @@
-## utils
-
-macro new_with_finalizer(new_sym)
-    if isa(new_sym, Symbol)
-        call = :($(new_sym)())
-    else
-        call = new_sym
-    end
-    esc(quote
-        handle = $call
-        ret = new(handle)
-        finalizer(close, ret)
-        ret
-    end)
-end
-
-
-## initialization
-
-let initialized = false
-    global initialize_tpu_runtime
-    function initialize_tpu_runtime()
-        if !initialized
-            args = ["--install_signal_handlers=0"; split(get(ENV, "JULIA_LIBTPU_ARGS", ""))]
-            @ccall libtpu.TfTpu_Initialize(true::Bool, length(args)::Cint, args::Ptr{Cstring})::Cvoid
-            initialized = true
-        end
-    end
-end
-
-
-## status
-
-export TpuStatus, with_status
-
-mutable struct TpuStatus
-    handle::Ptr{TF_Status}
-
-    function TpuStatus()
-        @new_with_finalizer(TpuStatus_New)
-    end
-
-    function TpuStatus(code, msg)
-        @new_with_finalizer begin
-            TpuStatus_Create(code, msg)
-        end
-    end
-end
-
-Base.unsafe_convert(::Type{Ptr{TF_Status}}, x::TpuStatus) = x.handle
-
-function with_status(f)
-    status = TpuStatus()
-    rv = f(status)
-    if !TpuStatus_Ok(status)
-        throw(status)
-    end
-    close(status)
-    rv
-end
-
-function Base.show(io::IO, status::TpuStatus)
-    print(io, "TpuStatus(")
-    if TpuStatus_Ok(status)
-        print(io, "OK)")
-    else
-        print(io, "not OK")
-        print(io, ", code ", TpuStatus_Code(status), ")")
-        print(io, ": ", unsafe_string(TpuStatus_Message(status)))
-    end
-end
-
-
-## platform
-
-export TpuPlatform, initialize!
-
-mutable struct TpuPlatform
-    handle::Ptr{SE_Platform}
-    function TpuPlatform()
-        initialize_tpu_runtime()
-        @new_with_finalizer(TpuPlatform_New)
-    end
-end
-
-Base.unsafe_convert(::Type{Ptr{SE_Platform}}, x::TpuPlatform) = x.handle
-
-function initialize!(p::TpuPlatform)
-    status = Ref{Ptr{SE_Platform}}(C_NULL)
-    with_status() do s
-        TpuPlatform_Initialize(p, 0, C_NULL, C_NULL, s)
-    end
-end
-
-
-## executor config
-
-export TpuStreamExecutorConfig, set_ordinal!
-
-mutable struct TpuStreamExecutorConfig
-    handle::Ptr{SE_StreamExecutorConfig}
-    function TpuStreamExecutorConfig()
-        @new_with_finalizer(TpuStreamExecutorConfig_Default)
-    end
-end
-
-Base.unsafe_convert(::Type{Ptr{SE_StreamExecutorConfig}}, x::TpuStreamExecutorConfig) = x.handle
-
-set_ordinal!(sec::TpuStreamExecutorConfig, o::Integer) =
-    TpuStreamExecutorConfig_SetOrdinal(sec, o)
-
-
-
-## executor
-
-export TpuExecutor
-
-mutable struct TpuExecutor
-    handle::Ptr{SE_StreamExecutor}
-    function TpuExecutor(platform::TpuPlatform; config = TpuStreamExecutorConfig())
-        @new_with_finalizer with_status() do s
-            TpuPlatform_GetExecutor(platform, config, s)
-        end
-    end
-end
-
-Base.unsafe_convert(::Type{Ptr{SE_StreamExecutor}}, x::TpuExecutor) = x.handle
-
-function initialize!(e::TpuExecutor, ordinal = 0, options = SEDeviceOptions(UInt32(0)))
-    with_status() do s
-        TpuExecutor_Init(e, ordinal, options, s)
-    end
-end
-
-# allocations
-
-export allocate!, deallocate!
-
-SE_DeviceMemoryBase() = SE_DeviceMemoryBase(C_NULL, 0, 0)
-
-function allocate!(e::TpuExecutor, size::UInt64, memory_space::Int64)
-    TpuExecutor_Allocate(e, size, memory_space)
-end
-
-function deallocate!(e::TpuExecutor, mem::SE_DeviceMemoryBase)
-    rmem = Ref{SE_DeviceMemoryBase}(mem)
-    TpuExecutor_Deallocate(e, rmem)
-end
-
-# device options
-
-mutable struct SEDeviceOptions
-    handle::Ptr{SE_DeviceOptions}
-    function SEDeviceOptions(flags::Cuint)
-        TpuExecutor_NewDeviceOptions(flags)
-    end
-end
-
-
 ## compiler
 
 export TpuCompiler, run_backend!, compile!, shape_size
@@ -164,7 +5,9 @@ export TpuCompiler, run_backend!, compile!, shape_size
 mutable struct TpuCompiler
     handle::Ptr{Tpu_Compiler}
     function TpuCompiler()
-        @new_with_finalizer(TpuCompiler_New)
+        handle = TpuCompiler_New()
+        compiler = new(handle)
+        finalizer(TpuCompiler_Free, compiler)
     end
 end
 
@@ -219,9 +62,8 @@ Base.cconvert(::Type{Ptr{SE_DeviceMemoryAllocator}}, x::TpuDeviceMemoryAllocator
 mutable struct TpuExecutable
     handle::Ptr{SE_Executable}
     function TpuExecutable(handle::Ptr{Cvoid})
-        @new_with_finalizer(begin
-            handle
-        end)
+        executable = new(handle)
+        finalizer(TpuExecutable_Free, executable)
     end
 end
 
@@ -328,7 +170,7 @@ function compile!(compiler::TpuCompiler, module_group::XLA.HloModuleGroupProto,
             convert(XLA_ComputationLayout, hlo_module.host_program_shape))
     end
     @GC.preserve execs module_group_serialized confs begin
-        exec_ptrs = [[Base.unsafe_convert(Ptr{Cvoid}, exec) for exec in exec_list] for exec_list in execs]
+        exec_ptrs = [[Base.unsafe_convert(Ptr{SE_StreamExecutor}, exec) for exec in exec_list] for exec_list in execs]
         @GC.preserve exec_ptrs begin
             s_list = SE_StreamExecutorList[SE_StreamExecutorList(
                 Base.unsafe_convert(Ptr{Ptr{Cvoid}}, ptr_list),
@@ -353,20 +195,6 @@ function shape_size(compiler::TpuCompiler, shape::Shape)
     rshape = Ref{XLA_Shape}(shape)
     TpuCompiler_ShapeSize(compiler, rshape)
 end
-
-
-## stream
-
-export TpuStream
-
-mutable struct TpuStream
-    handle::Ptr{SE_Stream}
-    function TpuStream(parent::TpuExecutor)
-        @new_with_finalizer(TpuStream_New(parent))
-    end
-end
-
-Base.unsafe_convert(::Type{Ptr{SE_Stream}}, x::TpuStream) = x.handle
 
 
 ## memory copying
@@ -510,19 +338,3 @@ end
 TpuSerializedProto() = TpuSerializedProto(C_NULL, 0)
 
 Base.zero(::Type{XLA_Tile}) = XLA_Tile(Int64List())
-
-for (T, sym) in
-    ((TpuStatus, :TpuStatus_Free),
-     (TpuPlatform, :TpuPlatform_Free),
-     (TpuExecutor, :TpuExecutor_Free),
-     (TpuStreamExecutorConfig, :TpuStreamExecutorConfig_Free),
-     (SEDeviceOptions, :TpuExecutor_FreeDeviceOptions),
-     (TpuCompiler, :TpuCompiler_Free),
-     (TpuExecutable, :TpuExecutable_Free),
-     (TpuStream, :TpuStream_Free))
-    Base.unsafe_convert(::Type{Ptr{Cvoid}}, h::T) = h.handle
-    @eval function Base.close(h::$T)
-        $(sym)(h)
-        h.handle = C_NULL
-    end
-end

@@ -59,7 +59,7 @@ function main(dims=(128,128); T=Int32)
         )
     ]
 
-    options = TpuExecutableRunOptions(allocator, global_stream(), nothing; run_id=5)
+    options = TpuExecutableRunOptions(allocator, default_stream(), nothing; run_id=5)
     output = execute_async!(executable, options, inputs)
     output_mem = unsafe_load(output.result.bases)
 
