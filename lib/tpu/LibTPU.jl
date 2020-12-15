@@ -14,9 +14,11 @@ include("libtpu_h.jl")
 include("status.jl")
 include("platform.jl")
 include("executor.jl")
+include("device.jl")
 include("stream.jl")
-
-include("highlevel.jl")
+include("memory.jl")
+include("shape.jl")
+include("compiler.jl")
 
 function __init__()
     args = ["--install_signal_handlers=0"; split(get(ENV, "JULIA_LIBTPU_ARGS", ""))]

@@ -52,26 +52,3 @@ function initialize!(e::TpuExecutor, ordinal = 0, options = SEDeviceOptions(UInt
 end
 
 platform_device_count(e::TpuExecutor) = TpuExecutor_PlatformDeviceCount(e)
-
-
-# allocations
-
-export SE_DeviceMemoryBase, allocate!, deallocate!, memory_usage
-
-SE_DeviceMemoryBase() = SE_DeviceMemoryBase(C_NULL, 0, 0)
-
-function allocate!(e::TpuExecutor, size::UInt64, memory_space::Int64)
-    TpuExecutor_Allocate(e, size, memory_space)
-end
-
-function deallocate!(e::TpuExecutor, mem::SE_DeviceMemoryBase)
-    rmem = Ref{SE_DeviceMemoryBase}(mem)
-    TpuExecutor_Deallocate(e, rmem)
-end
-
-function memory_usage(e::TpuExecutor)
-    free = Ref{Int64}()
-    total = Ref{Int64}()
-    TpuExecutor_DeviceMemoryUsage(e, free, total)
-    (free=free[], total=total[])
-end
