@@ -165,13 +165,18 @@ struct LibTPUList{T}
     inlined::NTuple{6, T}
     size::Int64
 end
+
 LibTPUList{T}() where {T} = LibTPUList{T}(ntuple(_->zero(T),6), 0)
+
 function Base.convert(::Type{LibTPUList{T}}, x::Vector{T}) where {T}
     @assert length(x) <= 6
     LibTPUList{T}(ntuple(6) do i
         i > length(x) ? zero(T) : x[i]
     end, length(x))
 end
+
+Base.convert(::Type{Vector{T}}, x::LibTPUList) where {T} =
+    T[x.inlined[1:x.size]...]
 
 const Int64List = LibTPUList{Int64}
 const BoolList = LibTPUList{Bool}
