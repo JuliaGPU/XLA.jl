@@ -3,18 +3,7 @@ using Test
 using XLA
 using .LibTPU
 
-const p = TpuPlatform()
-initialize!(p)
-
 function main(dims=(128,128); T=Int32)
-    # init
-
-    global p
-
-    exec = TpuExecutor(p)
-    initialize!(exec)
-
-
     # compile
 
     x = rand(T, dims)
@@ -32,8 +21,8 @@ function main(dims=(128,128); T=Int32)
     XLA.code_hlo(hlo_module_group)
 
     compiler = TpuCompiler()
-    allocator = TpuDeviceMemoryAllocator(p, exec)
-    executable = compile!(compiler, hlo_module_group, [[exec]], allocator)[]
+    allocator = TpuDeviceMemoryAllocator(platform(), executor())
+    executable = compile!(compiler, hlo_module_group, [[executor()]], allocator)[]
 
 
     # allocate
@@ -41,20 +30,17 @@ function main(dims=(128,128); T=Int32)
     xs = convert(LibTPU.XLA_Shape, XLA.Shape(T, dims))
 
     size = shape_size(compiler, xs)
-    size == sizeof(y) || # FIXME: try (4,4) or (64,64)
-        error("XLA tensor size $size doesn't match Julia's $(sizeof(y))-byte array")
-    mem = allocate!(exec, UInt64(size), 0)
+    @assert size == sizeof(y)
+    mem = allocate!(executor(), UInt64(size), 0)
 
     buffers = [
         TpuMaybeOwningDeviceMemory(mem, false, 0, allocator)
     ]
 
-    unsafe_copyto!(mem, Ptr{UInt8}(pointer(x)), UInt64(size); exec)
+    unsafe_copyto!(mem, Ptr{UInt8}(pointer(x)), UInt64(size); exec=executor())
 
 
     # execute
-
-    stream = TpuStream(exec)
 
     inputs = [
         TpuExecutionInput(
@@ -62,20 +48,16 @@ function main(dims=(128,128); T=Int32)
         )
     ]
 
-    options = TpuExecutableRunOptions(allocator, stream, nothing; run_id=5)
+    options = TpuExecutableRunOptions(allocator, global_stream(), nothing; run_id=5)
     output = execute_async!(executable, options, inputs)
     output_mem = unsafe_load(output.result.bases)
 
 
-
     # verify
 
-    # FIXME: LibTPU.TpuExecutor_SynchronizeAllActivity(exec)
-    with_status() do status
-        LibTPU.TpuExecutor_BlockHostUntilDone(exec, stream, status)
-    end
+    synchronize()
 
-    unsafe_copyto!(Ptr{UInt8}(pointer(y)), output_mem, UInt64(size); exec)
+    unsafe_copyto!(Ptr{UInt8}(pointer(y)), output_mem, UInt64(size); exec=executor())
 
     @test y == x*x
 end

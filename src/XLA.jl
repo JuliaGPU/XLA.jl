@@ -25,6 +25,7 @@ module XLA
     export LibTPU
 
     #include("xrt.jl")
+    include("state.jl")
     include("xrtarray.jl")
     #include("topology.jl")
     #include("multicore.jl")
