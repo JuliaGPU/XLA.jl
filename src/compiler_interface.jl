@@ -20,6 +20,7 @@ function code_typed_xla(sig::Type; argvals=nothing)
         end
         mi = Core.Compiler.specialize_method(match.method, argtypes, match.sparams)
         # FIXME: doesn't work
+        #        https://github.com/JuliaLang/julia/pull/29261/files
     end
     Core.Compiler.typeinf_ext_toplevel(interp, mi)
     ci = ci_cache_lookup(mi, interp.world, interp.world)

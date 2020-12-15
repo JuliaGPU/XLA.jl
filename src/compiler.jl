@@ -55,7 +55,8 @@ function process_function_argument(argvals, sig, idx, ir, stmt, sparams)
     argvals
 end
 
-function is_known_call(e::Expr, @nospecialize(func), src, spvals::Core.SimpleVector, slottypes::Vector{Any} = Compiler.empty_slottypes)
+function is_known_call(e::Expr, @nospecialize(func), src, spvals,
+                       slottypes::Vector{Any}=Compiler.empty_slottypes)
     if e.head !== :call
         return false
     end
