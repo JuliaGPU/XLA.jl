@@ -180,16 +180,3 @@ function ci_cache_lookup(mi, min_world, max_world)
     wvc = WorldView(CI_CACHE, min_world, max_world)
     return Core.Compiler.get(wvc, mi, nothing)
 end
-
-function compile_sig(interp, sig)
-    matches = Core.Compiler.findall(sig, Core.Compiler.method_table(interp); limit=1)
-    @assert Core.Compiler.length(matches) == 1
-    mi = Core.Compiler.specialize_method(Core.Compiler.getindex(matches, 1))
-    Core.Compiler.typeinf_ext_toplevel(interp, mi)
-    ci = ci_cache_lookup(mi, interp.world, interp.world)
-    ir = Core.Compiler.inflate_ir(ci.inferred, mi)
-
-    sv = Compiler.OptimizationState(mi, Core.Compiler.OptimizationParams(interp), interp)
-    ir, sv = run_xla_embedding_passes!(ir, sv)
-    return ir
-end

@@ -9,12 +9,10 @@ function main(dims=(128,128); T=Int32)
     x = rand(T, dims)
     y = zero(x)
 
-    f = x->x*x
+    f = x->x.+x
     tt = Tuple{HLOArray{T, dims, length(dims)}}
-    sig = Base.signature_type(f, tt)
 
-    interp = XLA.GPUInterpreter(Base.get_world_counter())
-    ir = XLA.compile_sig(interp, sig)
+    ir, sv = XLA.code_typed_xla(f, tt)
     println("Generated Julia IR:\n", ir)
     hlo_module_group, rt = XLA.compile_to_xla(ir, nothing)
     println("Generated HLO modules:\n")
@@ -71,7 +69,7 @@ function main(dims=(128,128); T=Int32)
     # TODO: create arrays from execution output
     unsafe_copyto!(pointer(y), output_mem, size; executor=executor())
 
-    @test y == x*x
+    @test y == f(x)
 end
 
 isinteractive() || main()

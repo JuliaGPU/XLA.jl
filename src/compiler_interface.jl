@@ -1,57 +1,31 @@
-function code_typed_argtys(@nospecialize(types=Tuple); optimize=true, params=nothing, constvals=nothing)
-    ccall(:jl_is_in_pure_context, Bool, ()) && error("code reflection cannot be used from generated functions")
-    types = Base.to_tuple_type(types)
-    asts = []
-    world = ccall(:jl_get_world_counter, UInt, ())
-    params = params === nothing ? Core.Compiler.Params(world) : params
-    for x in Base._methods_by_ftype(types, -1, world)
-        meth = Base.func_for_method_checked(x[3], Tuple{types.parameters[2:end]...})
-        argtypes = nothing
-        if constvals !== nothing
-            argtypes = Vector(undef, length(types.parameters)+1)
-            for i = 1:length(types.parameters)+1
-                argtypes[i] = isassigned(constvals, i) ?
-                    Core.Compiler.Const(constvals[i]) : (
-                        i == 1 ? typeof(f) : types.parameters[i-1])
-            end
-        end
-        (code, ty) = Core.Compiler.typeinf_code(meth, x[1], x[2], optimize, params, argtypes)
-        code === nothing && error("inference not successful") # inference disabled?
-        push!(asts, code => ty)
-    end
-    return asts
-end
-
-function code_typed_xla(f, argtypes::Type)
-    argvals = Vector{Any}(undef, length(argtypes.parameters) + 1)
-    argvals[1] = f
-    params = Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true, ignore_all_inlining_heuristics=true)
-    ci = (Compiler == Core.Compiler ? Base.code_typed : NI.code_typed)(f, argtypes, argvals; params=params)[1].first
-    method = which(f, argtypes)
-    (metharg, methsp) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
-                              Compiler.argtypes_to_type(Any[typeof(f), argtypes.parameters...]),
-                              method.sig)
-    mi = Compiler.code_for_method(method, metharg, methsp, params.world);
-    sv = Compiler.OptimizationState(mi, params);
-    ir = Compiler.inflate_ir(ci, mi);
-    run_xla_embedding_passes!(ir, sv)
+function code_typed_xla(f, argtypes::Type; kwargs...)
+    sig = Base.signature_type(f, argtypes)
+    code_typed_xla(sig; kwargs...)
 end
 
 function code_typed_xla(sig::Type; argvals=nothing)
-    params = Compiler.CustomParams(typemax(UInt); aggressive_constant_propagation=true, ignore_all_inlining_heuristics=true)
-    cds = code_typed_argtys(sig; params=params, constvals=argvals)
-    if length(cds) == 0
-        return nothing
+    interp = XLA.GPUInterpreter(Base.get_world_counter())
+    matches = Core.Compiler.findall(sig, Core.Compiler.method_table(interp); limit=1)
+    @assert Core.Compiler.length(matches) == 1
+    if argvals == nothing
+        mi = Core.Compiler.specialize_method(Core.Compiler.getindex(matches, 1))
+    else
+        match = Core.Compiler.getindex(matches, 1)
+        argtypes = Any[match.spec_types.parameters...]  # FIXME: relation to sig?
+        @assert length(argvals) == length(argtypes)-1
+        for i = 1:length(argvals)
+            if isassigned(argvals, i)
+                argtypes[i+1] = Core.Compiler.Const(argvals[i])
+            end
+        end
+        mi = Core.Compiler.specialize_method(match.method, argtypes, match.sparams)
+        # FIXME: doesn't work
     end
-    ci = cds[1].first
-    methods = Base._methods_by_ftype(sig, -1, params.world)
-    method = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), sig, params.world).func
-    (metharg, methsp) = ccall(:jl_type_intersection_with_env, Any, (Any, Any),
-                              Compiler.argtypes_to_type(Any[sig.parameters...]),
-                              method.sig)
-    mi = Compiler.code_for_method(method, metharg, methsp, params.world);
-    sv = Compiler.OptimizationState(mi, params);
-    ir = Compiler.inflate_ir(ci, mi);
+    Core.Compiler.typeinf_ext_toplevel(interp, mi)
+    ci = ci_cache_lookup(mi, interp.world, interp.world)
+    ir = Core.Compiler.inflate_ir(ci.inferred, mi)
+
+    sv = Compiler.OptimizationState(mi, Core.Compiler.OptimizationParams(interp), interp)
     run_xla_embedding_passes!(ir, sv)
 end
 
