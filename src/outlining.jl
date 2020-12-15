@@ -164,13 +164,13 @@ function NCA(domtree, nodes)
     # Ascend all nodes that are not at the same level
     for i = 1:length(nodes)
         if domtree.nodes[nodes[i]].level != min_level
-            nodes[i] = domtree.idoms[nodes[i]]
+            nodes[i] = domtree.idoms_bb[nodes[i]]
         end
     end
     # Ascend levels together until all the nodes are the same
     while !all(==(nodes[1]), nodes)
         for i = 1:length(nodes)
-            nodes[i] = domtree.idoms[nodes[i]]
+            nodes[i] = domtree.idoms_bb[nodes[i]]
         end
     end
     nodes[1]
@@ -408,7 +408,7 @@ end
 function outline_if!(ir, sv, domtree, split_block, join)
     # Simple version for experiments: Assume each branch of the if has
     # exactly one basic block
-    @assert isa(ir.stmts[ir.cfg.blocks[split_block].stmts[end]], GotoIfNot)
+    @assert isa(ir.stmts[ir.cfg.blocks[split_block].stmts[end]][:inst], GotoIfNot)
     divergence_blocks = copy(ir.cfg.blocks[split_block].succs)
     @assert length(divergence_blocks) == 2
     # For our simple experiments only allow a single block
@@ -418,7 +418,7 @@ function outline_if!(ir, sv, domtree, split_block, join)
         succs = ir.cfg.blocks[block].succs
         length(preds) == 1 && length(succs) == 1 && succs[1] == join_block
     end
-    phi_node = ir.stmts[ir.cfg.blocks[join_block].stmts[1]]
+    phi_node = ir.stmts[ir.cfg.blocks[join_block].stmts[1]][:inst]
 
     all_used_from_outside = Vector{Any}[]
     for bb in divergence_blocks
@@ -492,7 +492,7 @@ function outline_control_flow!(ir, sv)
     bbs = ir.cfg.blocks
     length(bbs) == 1 && return ir
 
-    domtree = Compiler.construct_domtree(ir.cfg);
+    domtree = Compiler.construct_domtree(ir.cfg.blocks)
 
     todo = analyze_regions(domtree, ir.cfg)
     while !isempty(todo)
