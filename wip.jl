@@ -40,18 +40,18 @@ function main(dims=(128,128); T=Int32)
         error("Array shape $xs will get padded on the TPU to $ys")
     end
 
+    d_x = TPUArray(x)
+
     size = shape_size(compiler, xs)
-    @assert size == sizeof(y)
-    mem = allocate!(executor(), UInt64(size), 0)
-
-    buffers = [
-        TpuMaybeOwningDeviceMemory(mem, false, 0, allocator)
-    ]
-
-    unsafe_copyto!(mem, Ptr{UInt8}(pointer(x)), UInt64(size); exec=executor())
+    @assert size == sizeof(d_x)
 
 
     # execute
+
+    buffers = [
+        # TODO: support for donating the input
+        TpuMaybeOwningDeviceMemory(d_x.mem, false, 0, allocator)
+    ]
 
     inputs = [
         TpuExecutionInput(
@@ -68,7 +68,8 @@ function main(dims=(128,128); T=Int32)
 
     synchronize()
 
-    unsafe_copyto!(Ptr{UInt8}(pointer(y)), output_mem, UInt64(size); exec=executor())
+    # TODO: create arrays from execution output
+    unsafe_copyto!(pointer(y), output_mem, size; executor=executor())
 
     @test y == x*x
 end

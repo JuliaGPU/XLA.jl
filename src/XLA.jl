@@ -1,6 +1,8 @@
 module XLA
     using ProtoBuf
 
+    using GPUArrays
+
     using XLA_Tools_jll
 
     import Base: run

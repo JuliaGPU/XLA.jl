@@ -5,7 +5,7 @@ export SE_DeviceMemoryBase, allocate!, deallocate!, memory_usage
 
 SE_DeviceMemoryBase() = SE_DeviceMemoryBase(C_NULL, 0, 0)
 
-function allocate!(e::TpuExecutor, size::UInt64, memory_space::Int64)
+function allocate!(e::TpuExecutor, size::Integer, memory_space::Integer)
     TpuExecutor_Allocate(e, size, memory_space)
 end
 
@@ -109,26 +109,30 @@ Base.unsafe_convert(T::Type{XLA_MaybeOwningDeviceMemoryShapeTree},
                     x::TpuMaybeOwningDeviceMemoryShapeTree) =
     x.handle
 
-function unsafe_copyto_async!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor, stream::TpuStream)
+function unsafe_copyto_async!(dst::SE_DeviceMemoryBase, src::Ptr, size::Integer;
+                              executor::TpuExecutor, stream::TpuStream)
     rdst = Ref{SE_DeviceMemoryBase}(dst)
-    TpuExecutor_MemcpyFromHost(exec, stream, rdst, src, size)
+    TpuExecutor_MemcpyFromHost(executor, stream, rdst, src, size)
 end
 
-function unsafe_copyto_async!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor, stream::TpuStream)
+function unsafe_copyto_async!(dst::Ptr, src::SE_DeviceMemoryBase, size::Integer;
+                              executor::TpuExecutor, stream::TpuStream)
     rsrc = Ref{SE_DeviceMemoryBase}(src)
-    TpuExecutor_MemcpyToHost(exec, stream, dst, rsrc, size)
+    TpuExecutor_MemcpyToHost(executor, stream, dst, rsrc, size)
 end
 
-function Base.unsafe_copyto!(dst::SE_DeviceMemoryBase, src::Ptr{UInt8}, size::Csize_t; exec::TpuExecutor)
+function Base.unsafe_copyto!(dst::SE_DeviceMemoryBase, src::Ptr, size::Integer;
+                             executor::TpuExecutor)
     rdst = Ref{SE_DeviceMemoryBase}(dst)
     with_status() do status
-        TpuExecutor_SynchronousMemcpyFromHost(exec, rdst, src, size, status)
+        TpuExecutor_SynchronousMemcpyFromHost(executor, rdst, src, size, status)
     end
 end
 
-function Base.unsafe_copyto!(dst::Ptr{UInt8}, src::SE_DeviceMemoryBase, size::Csize_t; exec::TpuExecutor)
+function Base.unsafe_copyto!(dst::Ptr, src::SE_DeviceMemoryBase, size::Integer;
+                             executor::TpuExecutor)
     rsrc = Ref{SE_DeviceMemoryBase}(src)
     with_status() do status
-        TpuExecutor_SynchronousMemcpyToHost(exec, dst, rsrc, size, status)
+        TpuExecutor_SynchronousMemcpyToHost(executor, dst, rsrc, size, status)
     end
 end
