@@ -27,7 +27,7 @@ function main(dims=(128,128); T=Int32)
 
     # allocate
 
-    xs = convert(LibTPU.XLA_Shape, XLA.Shape(T, dims))
+    xs = XLA.Shape(T, dims)
 
     size = shape_size(compiler, xs)
     @assert size == sizeof(y)

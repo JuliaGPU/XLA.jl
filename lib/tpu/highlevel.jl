@@ -271,8 +271,8 @@ function Base.convert(::Type{XLA_ComputationLayout}, pshape::ProgramShape)
     end
     XLA_ComputationLayout(
         parameters === nothing ? 0 : length(parameters),
-        parameters === nothing ? C_NULL : Base.unsafe_convert(Ptr{XLA_Shape}, parameters),
-        convert(XLA_Shape, pshape.result),
+        parameters === nothing ? C_NULL : pointer(parameters),
+        pshape.result,
         parameters
     )
 end
@@ -333,7 +333,7 @@ function compile!(compiler::TpuCompiler, module_group::XLA.HloModuleGroupProto,
     end
 end
 
-function shape_size(compiler::TpuCompiler, shape::XLA_Shape)
+function shape_size(compiler::TpuCompiler, shape::Shape)
     rshape = Ref{XLA_Shape}(shape)
     TpuCompiler_ShapeSize(compiler, rshape)
 end
@@ -382,7 +382,7 @@ struct TpuMaybeOwningDeviceMemoryShapeTree
     buffers::Vector{TpuMaybeOwningDeviceMemory}
     ptrs::Vector{SE_MaybeOwningDeviceMemory}
 
-    function TpuMaybeOwningDeviceMemoryShapeTree(shape::XLA_Shape, buffers::Vector{TpuMaybeOwningDeviceMemory})
+    function TpuMaybeOwningDeviceMemoryShapeTree(shape::Shape, buffers::Vector{TpuMaybeOwningDeviceMemory})
         ptrs = [Base.unsafe_convert(SE_MaybeOwningDeviceMemory, buffer) for buffer in buffers]
         handle = XLA_MaybeOwningDeviceMemoryShapeTree(shape, pointer(ptrs))
         new(handle, buffers, ptrs)
@@ -461,7 +461,7 @@ struct TpuExecutionInput
     shape_tree::TpuMaybeOwningDeviceMemoryShapeTree
     unowned_indices::Vector{Cint}
 
-    function TpuExecutionInput(shape_tree, unowned_indices::Vector, dynamic_shape::XLA_Shape)
+    function TpuExecutionInput(shape_tree, unowned_indices::Vector, dynamic_shape::Shape)
         unowned_indices = convert(Vector{Cint}, unowned_indices)
         handle = SE_ExecutionInput(
             Base.unsafe_convert(XLA_MaybeOwningDeviceMemoryShapeTree, shape_tree),
