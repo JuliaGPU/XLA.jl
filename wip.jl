@@ -29,6 +29,17 @@ function main(dims=(128,128); T=Int32)
 
     xs = XLA.Shape(T, dims)
 
+    # FIXME: deal with array padding
+    # https://cloud.google.com/tpu/docs/performance-guide#consequences_of_tiling
+    ys = with_status() do status
+        ys = Ref{LibTPU.XLA_Shape}(xs)  # does not work with an #undef ref
+        LibTPU.XlaShapeToTpuPaddedShape(Ref{LibTPU.XLA_Shape}(xs), ys, status)
+        convert(XLA.Shape, ys[])
+    end
+    if ys != xs
+        error("Array shape $xs will get padded on the TPU to $ys")
+    end
+
     size = shape_size(compiler, xs)
     @assert size == sizeof(y)
     mem = allocate!(executor(), UInt64(size), 0)
