@@ -77,28 +77,28 @@ function kill_useless_stmts!(ir)
 end
 
 function run_xla_embedding_passes!(ir, sv)
-    Compiler.verify_ir(ir);
+    Compiler.verify_ir(ir)
     ir = Compiler.compact!(ir, true)
     kill_useless_stmts!(ir)
-    Compiler.verify_ir(ir);
-    domtree = Compiler.construct_domtree(ir.cfg);
-    ir = Compiler.domsort_ssa!(ir, domtree);
-    Compiler.verify_ir(ir);
+    Compiler.verify_ir(ir)
+    domtree = Compiler.construct_domtree(ir.cfg.blocks)
+    ir = Compiler.domsort_ssa!(ir, domtree)
+    Compiler.verify_ir(ir)
     ir = Compiler.cfg_simplify!(ir)
-    Compiler.verify_ir(ir);
+    Compiler.verify_ir(ir)
     ir = Compiler.compact!(ir, true)
     ir = refine_types!(ir, sv)
-    ir = Compiler.ssa_inlining_pass!(ir, ir.linetable, sv)
+    ir = Compiler.ssa_inlining_pass!(ir, ir.linetable, sv.inlining, sv.src.propagate_inbounds)
     ir = Compiler.compact!(ir, true)
     for i = 1:3
-        domtree = Compiler.construct_domtree(ir.cfg);
+        domtree = Compiler.construct_domtree(ir.cfg.blocks)
         ir = Compiler.domsort_ssa!(ir, domtree)
-        Compiler.verify_ir(ir);
+        Compiler.verify_ir(ir)
         ir = Compiler.cfg_simplify!(ir)
         ir = Compiler.compact!(ir, true)
     end
     ir = Compiler.compact!(ir)
     ir = Compiler.compact!(ir)
-    Compiler.verify_ir(ir);
+    Compiler.verify_ir(ir)
     ir, sv
 end

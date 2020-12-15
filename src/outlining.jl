@@ -412,6 +412,7 @@ function outline_if!(ir, sv, domtree, split_block, join)
     divergence_blocks = copy(ir.cfg.blocks[split_block].succs)
     @assert length(divergence_blocks) == 2
     # For our simple experiments only allow a single block
+    @assert length(ir.cfg.blocks[divergence_blocks[1]].succs) == 1
     join_block = ir.cfg.blocks[divergence_blocks[1]].succs[1]
     @assert all(divergence_blocks) do block
         preds = ir.cfg.blocks[block].preds

@@ -38,7 +38,7 @@ module XLA
     include("linalg.jl")
     #include("explain.jl")
     include("compiler.jl")
-    #include("compiler_passes.jl")
+    include("compiler_passes.jl")
     #include("compiler_interface.jl")
     #include("utils.jl")
     #include("grad.jl")
