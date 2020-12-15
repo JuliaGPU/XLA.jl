@@ -1,5 +1,5 @@
-# Run a single op over XRTArrays
-const AnyXLA = Union{XRTArray, XLAScalar, HloToken}
+# Run a single op over HLOArrays
+const AnyXLA = Union{HLOArray, XLAScalar, HloToken}
 
 function build_computation(op::HloOp, args::AnyXLA...)
     comp = HloComputationProto(
@@ -90,11 +90,11 @@ function dynamic_not_implemented(op)
           "Try compiled mode or implement dynamic semantics.")
 end
 
-@noinline function (m::HloReduceWindow{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
+@noinline function (m::HloReduceWindow{fT})(f::fT, arg::HLOArray, init::HLOArray) where {fT}
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg))
 end
 
-@noinline function (m::HloReduce{fT})(f::fT, arg::XRTArray, init::XRTArray) where {fT}
+@noinline function (m::HloReduce{fT})(f::fT, arg::HLOArray, init::HLOArray) where {fT}
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, typeof(f), typeof(arg), typeof(init))
 end
 
@@ -103,7 +103,7 @@ end
     Base.invokelatest(dynamic_not_implemented, m)::rT
 end
 
-@noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::XRTArray, source::XRTArray, init::XRTArray) where {T,S}
+@noinline function (m::HloSelectAndScatter{T,S})(select::T, scatter::S, op::HLOArray, source::HLOArray, init::HLOArray) where {T,S}
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, S, typeof(op), typeof(source), typeof(init))
 end
 
@@ -111,7 +111,7 @@ end
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, T, map(typeof, args)...)
 end
 
-@noinline function (m::HloMap{fT})(f::fT, args::XRTArray...) where {fT}
+@noinline function (m::HloMap{fT})(f::fT, args::HLOArray...) where {fT}
     Base.invokelatest(dynamic_not_implemented, m)::infer_rt(m, f, map(typeof, args)...)
 end
 

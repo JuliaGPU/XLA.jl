@@ -75,11 +75,11 @@ function map_to_tpu end
 const tpu = map_to_tpu
 
 ## Mapping utilities
-# Convert scalars to single-element XRTArrays with eltype Float32:
-map_to_tpu(x::Real) = XRTArray(convert(Float32, x))
+# Convert scalars to single-element HLOArrays with eltype Float32:
+map_to_tpu(x::Real) = HLOArray(convert(Float32, x))
 
-# Convert arrays to XRTArrays with eltype Float32
-map_to_tpu(x::AbstractArray) = XRTArray(Float32.(x))
+# Convert arrays to HLOArrays with eltype Float32
+map_to_tpu(x::AbstractArray) = HLOArray(Float32.(x))
 
 # Strip off the TrackedArray coating to get at the data underneath
 #map_to_tpu(x::TrackedArray) = map_to_tpu(Flux.data(x))
@@ -99,68 +99,68 @@ map_to_tpu(x) = Flux.mapchildren(map_to_tpu, x)
 
 
 map_to_cpu(x) = Flux.mapchildren(map_to_cpu, x)
-map_to_cpu(x::XRTArray) = convert(Array, x)
+map_to_cpu(x::HLOArray) = convert(Array, x)
 map_to_cpu(x::ImmutableChain) = Chain(map(map_to_cpu, x.layers)...)
 map_to_cpu(x::TPUBatchNorm) = Flux.BatchNorm(map(map_to_cpu, Flux.children(x))..., false)
 map_to_cpu(x::Flux.LSTMCell) = Flux.Recur(Flux.mapchildren(map_to_cpu, x))
 
-## Layer reimplementations that need to know about XRTArray
+## Layer reimplementations that need to know about HLOArray
 import NNlib: softmax, logsoftmax, ∇softmax, ∇logsoftmax
 import Flux: logitcrossentropy
 export crossentropy, logitcrossentropy, softmax, ∇softmax, logsoftmax, ∇logsoftmax
 
 # Work around inference limitations to dynamically find the number of
 # batches held within a tensor.
-neg_nbatch(x) = XRTArray(Float32(-size(x, ndims(x))))
+neg_nbatch(x) = HLOArray(Float32(-size(x, ndims(x))))
 Zygote.@nograd neg_nbatch
 
-function crossentropy(ŷ::XRTArray, y::XRTArray)
+function crossentropy(ŷ::HLOArray, y::HLOArray)
     return sum(y .* log.(ŷ)) / neg_nbatch(y)
 end
 
-function logitcrossentropy(logŷ::XRTArray, y::XRTArray)
+function logitcrossentropy(logŷ::HLOArray, y::HLOArray)
     return sum(y .* logsoftmax(logŷ)) / neg_nbatch(y)
 end
 
-# Define softmax and its gradient for XRTArrays
-function softmax(xs::XRTArray)
+# Define softmax and its gradient for HLOArrays
+function softmax(xs::HLOArray)
     ys = xs .- maximum(xs, dims=1)
     zs = exp.(ys)
     return zs ./ sum(zs, dims=1)
 end
-function ∇softmax(Δ, xs::XRTArray)
+function ∇softmax(Δ, xs::HLOArray)
     sf = softmax(xs)
     return sf .* (Δ .- sum(Δ .* sf, dims = 1))
 end
-Zygote.@adjoint softmax(xs::XRTArray) = softmax(xs), Δ -> (∇softmax(Δ, xs),)
+Zygote.@adjoint softmax(xs::HLOArray) = softmax(xs), Δ -> (∇softmax(Δ, xs),)
 
-# Define logsoftmax and its gradient for XRTArrays
-function logsoftmax(xs::XRTArray)
+# Define logsoftmax and its gradient for HLOArrays
+function logsoftmax(xs::HLOArray)
     ys = xs .- maximum(xs, dims=1)
     zs = sum(exp.(ys), dims=1)
     return ys .- log.(zs)
 end
-∇logsoftmax(Δ, xs::XRTArray) = ∇softmax(Δ ./ max.(eps(eltype(xs)),softmax(xs)), xs)
-Zygote.@adjoint logsoftmax(xs::XRTArray) = logsoftmax(xs), Δ -> (∇logsoftmax(Δ, xs),)
+∇logsoftmax(Δ, xs::HLOArray) = ∇softmax(Δ ./ max.(eps(eltype(xs)),softmax(xs)), xs)
+Zygote.@adjoint logsoftmax(xs::HLOArray) = logsoftmax(xs), Δ -> (∇logsoftmax(Δ, xs),)
 
 
-function Base.sort(x::XRTArray{T,<:Any,1}; keys=x) where {T}
+function Base.sort(x::HLOArray{T,<:Any,1}; keys=x) where {T}
     return XLA.HloSort{typeof(<)}(0, false)(<, keys, x)[2]
 end
 
-Base.rand(::Type{XRTArray{T}}, shape::Int...) where {T} = XLA.HloRng(T, shape, 1)(XRTArray(typemin(T)),XRTArray(typemax(T)))
-Base.rand(::Type{XRTArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(F, shape, 1)(XRTArray(0.0f0),XRTArray(1.0f0))
-Base.randn(::Type{XRTArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(F, shape, 2)(XRTArray(0.0f0),XRTArray(1.0f0))
+Base.rand(::Type{HLOArray{T}}, shape::Int...) where {T} = XLA.HloRng(T, shape, 1)(HLOArray(typemin(T)),HLOArray(typemax(T)))
+Base.rand(::Type{HLOArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(F, shape, 1)(HLOArray(0.0f0),HLOArray(1.0f0))
+Base.randn(::Type{HLOArray{F}}, shape::Int...) where {F <: AbstractFloat} = XLA.HloRng(F, shape, 2)(HLOArray(0.0f0),HLOArray(1.0f0))
 
 # Shuffle by repeatedly sorting x with a random vector as the sorting key.
 # see https://github.com/tensorflow/tensorflow/blob/85deaa11cae878ba2c0e5284085956f75434b5b2/tensorflow/compiler/tf2xla/kernels/random_ops.cc#L83-L143 for more
 Base.@pure calc_rounds(L; exponent=3) = ceil(UInt32, exponent * log(L) / log(typemax(UInt32)))
-function shuffle(x::XRTArray)
-    round_idx = XRTArray(calc_rounds(length(x)))
-    while round_idx > XRTArray(0x00000000)
-        keys = rand(XRTArray{UInt32}, length(x))
+function shuffle(x::HLOArray)
+    round_idx = HLOArray(calc_rounds(length(x)))
+    while round_idx > HLOArray(0x00000000)
+        keys = rand(HLOArray{UInt32}, length(x))
         x = sort(x, keys=keys)
-        round_idx -= XRTArray(0x00000001)
+        round_idx -= HLOArray(0x00000001)
     end
     return x
 end

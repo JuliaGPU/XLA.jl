@@ -4,14 +4,14 @@ end
 
 function emulate(op::HloBroadcast, arg)
     if ndims(arg) == 0
-        XRTArray(fill(convert(Array, arg)[], op.result_shape...))
+        HLOArray(fill(convert(Array, arg)[], op.result_shape...))
     else
         dynamic_not_implemented(op)
     end
 end
 
 function emulate(op::HloReshape, arg)
-    XRTArray(reshape(convert(Array, arg), op.result_shape))
+    HLOArray(reshape(convert(Array, arg), op.result_shape))
 end
 
 function emulate(op::HloTranspose, arg)
@@ -22,7 +22,7 @@ function emulate(op::HloTranspose, arg)
     end
     perm = map(x->x+1, op.permutation)
     @show perm
-    XRTArray(collect(permutedims(aarg, )))
+    HLOArray(collect(permutedims(aarg, )))
 end
 
 # TODO: Fix these

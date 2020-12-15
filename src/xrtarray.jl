@@ -15,24 +15,24 @@ mutable struct XRTStorage{T, N}
     end
 end
 
-struct XRTArray{T, Dims, N} <: AbstractArray{T, N}
+struct HLOArray{T, Dims, N} <: AbstractArray{T, N}
     storage::XRTStorage{T, N}
-    @noinline function XRTArray{T, Dims, N}(a::Array{T, N}) where {T, Dims, N}
+    @noinline function HLOArray{T, Dims, N}(a::Array{T, N}) where {T, Dims, N}
         @assert size(a) == Dims
         @assert length(Dims) == N
         new{T, Dims, N}(XRTStorage{T, N}(a))
     end
-    @noinline function XRTArray{T, (), 0}(a::T) where {T<:XLAScalar}
-        XRTArray{T, (), 0}(fill(a))
+    @noinline function HLOArray{T, (), 0}(a::T) where {T<:XLAScalar}
+        HLOArray{T, (), 0}(fill(a))
     end
-    @noinline function XRTArray{T, (), 0}(a::T) where {T<:XRTArray}
+    @noinline function HLOArray{T, (), 0}(a::T) where {T<:HLOArray}
         # Can share storage
         storage = a.storage.remotestorage !== nothing ?
             XRTStorage{T, 0}(a.storage.remotestorage) :
             XRTStorage{T, 0}(fill(a))
         new{T, (), 0}(storage)
     end
-    @noinline function XRTArray{T, Dims, N}(h::XRTAllocation) where {T, Dims, N}
+    @noinline function HLOArray{T, Dims, N}(h::XRTAllocation) where {T, Dims, N}
         @assert length(Dims) == N
         new{T, Dims, N}(XRTStorage{T, N}(h))
     end
@@ -47,7 +47,7 @@ function read_literal(rs::XRTAllocation)
     readproto(IOBuffer(literal), LiteralProto())
 end
 
-function Base.convert(::Type{Array}, A::XRTArray)
+function Base.convert(::Type{Array}, A::HLOArray)
     if A.storage.localstorage !== nothing
         return copy(A.storage.localstorage)
     end
@@ -57,11 +57,11 @@ function Base.convert(::Type{Array}, A::XRTArray)
     return copy(A.storage.localstorage)
 end
 
-@noinline function Base.convert(::Type{T}, A::XRTArray{T, (), 0}) where {T}
+@noinline function Base.convert(::Type{T}, A::HLOArray{T, (), 0}) where {T}
     convert(Array, A)[]::T
 end
 
-function gethandle!(sess, A::XRTArray)
+function gethandle!(sess, A::HLOArray)
     if A.storage.remotestorage !== nothing
         @assert A.storage.remotestorage.sess === sess
         return A.storage.remotestorage
@@ -74,49 +74,49 @@ function gethandle!(sess, x::XRTAllocation)
     return x
 end
 
-const XRTMatrix{T, Dims} = XRTArray{T, Dims, 2} where {T, Dims}
-const XRTVector{T, Dims} = XRTArray{T, Dims, 1} where {T, Dims}
-XRTArray(A::AbstractArray) = XRTArray(collect(A)::Array)
-function XRTArray(a::Array{T}) where {T}
-    XRTArray{T, size(a), ndims(a)}(a)
+const HLOMatrix{T, Dims} = HLOArray{T, Dims, 2} where {T, Dims}
+const HLOVector{T, Dims} = HLOArray{T, Dims, 1} where {T, Dims}
+HLOArray(A::AbstractArray) = HLOArray(collect(A)::Array)
+function HLOArray(a::Array{T}) where {T}
+    HLOArray{T, size(a), ndims(a)}(a)
 end
-function XRTArray(a::XLAScalar)
-    XRTArray{typeof(a), (), 0}(a)
+function HLOArray(a::XLAScalar)
+    HLOArray{typeof(a), (), 0}(a)
 end
-function XRTArray(a::Tuple{XLAScalar})
-    XRTArray{typeof(a[1]), (), 0}(a[1])
+function HLOArray(a::Tuple{XLAScalar})
+    HLOArray{typeof(a[1]), (), 0}(a[1])
 end
-function XRTArray(a::Tuple{XRTArray})
-    XRTArray{typeof(a[1]), (), 0}(a[1])
+function HLOArray(a::Tuple{HLOArray})
+    HLOArray{typeof(a[1]), (), 0}(a[1])
 end
-XRTArray(sess, A::AbstractArray) = XRTArray(sess, collect(A)::Array)
-XRTArray(sess, a::XLAScalar) = XRTArray(sess, fill(a))
-function XRTArray(sess, a::Array{T}) where {T}
-    ret = XRTArray{T, size(a), ndims(a)}(a)
+HLOArray(sess, A::AbstractArray) = HLOArray(sess, collect(A)::Array)
+HLOArray(sess, a::XLAScalar) = HLOArray(sess, fill(a))
+function HLOArray(sess, a::Array{T}) where {T}
+    ret = HLOArray{T, size(a), ndims(a)}(a)
     gethandle!(sess, ret)
     ret
 end
 
-Base.eltype(A::Type{<:XRTArray{T}}) where {T} = T
-Base.size(A::Type{<:XRTArray{T, Dims}} where T) where {Dims} = Dims
-Base.size(A::Type{<:XRTArray{T, Dims}} where T, i) where {Dims} = i <= length(Dims) ? Dims[i] : 1
-@inline function Base.axes(A::Type{<:XRTArray{<:Any, Dims}}, d) where {Dims}
+Base.eltype(A::Type{<:HLOArray{T}}) where {T} = T
+Base.size(A::Type{<:HLOArray{T, Dims}} where T) where {Dims} = Dims
+Base.size(A::Type{<:HLOArray{T, Dims}} where T, i) where {Dims} = i <= length(Dims) ? Dims[i] : 1
+@inline function Base.axes(A::Type{<:HLOArray{<:Any, Dims}}, d) where {Dims}
     d <= length(Dims) ? axes(A)[d] : Base.OneTo(1)
 end
-Base.length(A::Type{<:XRTArray}) = prod(size(A))
+Base.length(A::Type{<:HLOArray}) = prod(size(A))
 
-Base.eltype(A::XRTArray{T}) where {T} = T
-Base.size(A::XRTArray{T, Dims}) where {T, Dims} = Dims
-Base.size(A::XRTArray{T, Dims}, i) where {T, Dims} = i <= length(Dims) ? Dims[i] : 1
-@inline function Base.axes(A::XRTArray{<:Any, Dims}, d) where {Dims}
+Base.eltype(A::HLOArray{T}) where {T} = T
+Base.size(A::HLOArray{T, Dims}) where {T, Dims} = Dims
+Base.size(A::HLOArray{T, Dims}, i) where {T, Dims} = i <= length(Dims) ? Dims[i] : 1
+@inline function Base.axes(A::HLOArray{<:Any, Dims}, d) where {Dims}
     d <= length(Dims) ? axes(A)[d] : Base.OneTo(1)
 end
 
-function Shape(::Type{XRTArray{T, Dims, N}} where N) where {T, Dims}
+function Shape(::Type{HLOArray{T, Dims, N}} where N) where {T, Dims}
     Shape(T, Dims)
 end
 Shape(T::Type, SHP::Tuple) = Shape(convert(XlaType, T), SHP)
-function Shape(::Type{<:XRTArray{T, SHP1}}, SHP2::Tuple) where {T, SHP1}
+function Shape(::Type{<:HLOArray{T, SHP1}}, SHP2::Tuple) where {T, SHP1}
     # Map arrays of arrays to higher rank arrays
     Shape(T, (SHP1..., SHP2...))
 end
@@ -133,19 +133,19 @@ function Shape(XLAT::XlaType, SHP::Tuple)
     )
 end
 
-Base.convert(::Type{Shape}, AT::Type{XRTArray{T, Dims, N}} where N) where {T, Dims} =
+Base.convert(::Type{Shape}, AT::Type{HLOArray{T, Dims, N}} where N) where {T, Dims} =
     Shape(AT)
 
-shape(A::XRTArray) = Shape(typeof(A))
+shape(A::HLOArray) = Shape(typeof(A))
 
-Base.isempty(A::XRTArray{T, Dims}) where {T, Dims} = prod(Dims) == 0
+Base.isempty(A::HLOArray{T, Dims}) where {T, Dims} = prod(Dims) == 0
 
-Base.print_array(io::IO, A::XRTArray) = Base.print_array(io, convert(Array, A))
-Base.show_vector(io::IO, A::XRTArray, opn='[', cls=']') =
+Base.print_array(io::IO, A::HLOArray) = Base.print_array(io, convert(Array, A))
+Base.show_vector(io::IO, A::HLOArray, opn='[', cls=']') =
     Base.show_vector(io, convert(Array, A), opn, cls)
-Base._show_nonempty(io::IO, A::XRTArray, prefix::String) =
+Base._show_nonempty(io::IO, A::HLOArray, prefix::String) =
     Base._show_nonempty(io, convert(Array, A), prefix)
-Base._show_nonempty(io::IO, A::XRTMatrix, prefix::String) =
+Base._show_nonempty(io::IO, A::HLOMatrix, prefix::String) =
     Base._show_nonempty(io, convert(Array, A), prefix)
 
 # References a remote struct. We currently have a tension between
@@ -161,8 +161,8 @@ end
 Base.show(io::IO, x::XRTRemoteStruct{T}) where {T} =
     println("Remote $(T)")
 
-struct_to_literal(A::XRTArray) = convert(LiteralProto, convert(Array, A))
-struct_to_literal(x::XLA.XLAScalar) = struct_to_literal(XRTArray(x))
+struct_to_literal(A::HLOArray) = convert(LiteralProto, convert(Array, A))
+struct_to_literal(x::XLA.XLAScalar) = struct_to_literal(HLOArray(x))
 function struct_to_literal(x)
     T = typeof(x)
     LiteralProto(
@@ -171,10 +171,10 @@ function struct_to_literal(x)
     )
 end
 
-function literal_to_struct(::Type{<:XRTArray}, x::LiteralProto)
+function literal_to_struct(::Type{<:HLOArray}, x::LiteralProto)
     # TODO: We could instead request the remote to create this for
     # us. Otherwise we're doing a round trip here. Good enough for now.
-    XRTArray(convert(Array, x))
+    HLOArray(convert(Array, x))
 end
 
 function literal_to_struct(::Type{<:XLA.XLAScalar}, x::LiteralProto)

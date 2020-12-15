@@ -6,8 +6,8 @@ function opcode(op::HloOp{Opcode}) where {Opcode}
     String(Opcode)
 end
 
-function Base.convert(::Type{Type{<:XRTArray}}, s::Shape)
-    XRTArray{convert(Type, XlaType(s.element_type)),
+function Base.convert(::Type{Type{<:HLOArray}}, s::Shape)
+    HLOArray{convert(Type, XlaType(s.element_type)),
         tuple(s.dimensions...),
         length(s.dimensions)}
 end
@@ -389,7 +389,7 @@ function shape_from_operands(op::HloOp, operands...)
         T, shape = shape_infer(op,
             typeof(op).parameters[1],
             map(operands) do op
-                convert(Type{<:XRTArray}, op.shape)
+                convert(Type{<:HLOArray}, op.shape)
             end...
         )
         xshape = Shape(T, shape)
@@ -398,7 +398,7 @@ function shape_from_operands(op::HloOp, operands...)
             typeof(op).parameters[1],
             typeof(op).parameters[2],
             map(operands) do op
-                convert(Type{<:XRTArray}, op.shape)
+                convert(Type{<:HLOArray}, op.shape)
             end...
         )
         xshape = Shape(T, shape)
@@ -407,7 +407,7 @@ function shape_from_operands(op::HloOp, operands...)
     else
         T, shape = shape_infer(op,
             map(operands) do op
-                convert(Type{<:XRTArray}, op.shape)
+                convert(Type{<:HLOArray}, op.shape)
             end...
         )
         xshape = Shape(T, shape)

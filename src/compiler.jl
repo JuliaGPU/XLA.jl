@@ -83,7 +83,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 push!(xla_args, T)
             end
             arg_instrs[i] = HloInstructionProto(comp, HloTuple(), vargs...)
-        elseif ir.argtypes[i] ⊑ XRTArray
+        elseif ir.argtypes[i] ⊑ HLOArray
             AT = widenconst(ir.argtypes[i])
             eltype = AT.parameters[1]
             dims = AT.parameters[2]
@@ -165,7 +165,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
             if isa(hlo_inst, HloMap) || isa(hlo_inst, HloReduceWindow) || isa(hlo_inst, HloReduce) || isa(hlo_inst, HloSort)
                 args = map(hlo_eval, stmt.args[4:end])
                 proto = HloInstructionProto(comp, hlo_inst, args...)
-                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[i], ir, ir.sptypes)), (), 0} for i = 4:length(stmt.args))...}
+                sig = Tuple{typeof(hlo_inst).parameters[1], (HLOArray{eltype(argextype(stmt.args[i], ir, ir.sptypes)), (), 0} for i = 4:length(stmt.args))...}
                 argvals = process_function_argument(nothing, sig, 1, ir, stmt, ir.sptypes)
                 res = code_typed_xla(sig; argvals=argvals)
                 if res === nothing
@@ -189,7 +189,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 args = map(hlo_eval, stmt.args[4:end])
                 shape = dtype_to_shape(infer_rt(hlo_inst, map(arg->widenconst(argextype(arg, ir, ir.sptypes)), stmt.args[3:end])...))
                 proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
-                sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[4], ir, ir.sptypes)), (), 0} for i = 1:2)...}
+                sig = Tuple{typeof(hlo_inst).parameters[1], (HLOArray{eltype(argextype(stmt.args[4], ir, ir.sptypes)), (), 0} for i = 1:2)...}
                 argvals = process_function_argument(nothing, sig, 1, ir, stmt, ir.sptypes)
                 ir′, sv′ = code_typed_xla(sig; argvals=argvals)
                 if sizeof(sig.parameters[1]) != 0
@@ -209,7 +209,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 proto.called_computation_ids = Int64[]
                 # Compile comparison function
                 let
-                    select_sig = Tuple{typeof(hlo_inst).parameters[1], (XRTArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
+                    select_sig = Tuple{typeof(hlo_inst).parameters[1], (HLOArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
                     select_argvals = process_function_argument(nothing, select_sig, 1, ir, stmt, ir.sptypes)
                     ir′, sv′ = code_typed_xla(select_sig; argvals=select_argvals)
                     if sizeof(select_sig.parameters[1]) != 0
@@ -226,7 +226,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 end
                 # Compile Scatter function
                 let
-                    scatter_sig = Tuple{typeof(hlo_inst).parameters[2], (XRTArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
+                    scatter_sig = Tuple{typeof(hlo_inst).parameters[2], (HLOArray{eltype(argextype(stmt.args[5], ir, sparams)), (), 0} for i = 1:2)...}
                     scatter_argvals = process_function_argument(nothing, scatter_sig, 2, ir, stmt, ir.sptypes)
                     ir′, sv′ = code_typed_xla(scatter_sig; argvals=scatter_argvals)
                     if sizeof(scatter_sig.parameters[1]) != 0
@@ -308,21 +308,21 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 proto = HloInstructionProto(comp, hlo_inst, args...; shape=shape)
             end
             ssa_vals[stmt_idx] = proto
-        elseif isa(hlo_inst, Type) && hlo_inst <: XRTArray
+        elseif isa(hlo_inst, Type) && hlo_inst <: HLOArray
             ty = argextype(stmt.args[3], ir, ir.sptypes)
             if isa(ty, Const) && isa(ty.val, XLAScalar)
                 ssa_vals[stmt_idx] = HloInstructionProto(comp, HloConstant(ty.val))
             else
-                # Allow treating an XRTArray as a scalar inside another XRTArray
+                # Allow treating an HLOArray as a scalar inside another HLOArray
                 # This is a no-op at the HLO level
                 ty = widenconst(ty)
-                @assert (hlo_inst <: XRTArray{<:Any, (), 0})
+                @assert (hlo_inst <: HLOArray{<:Any, (), 0})
                 ssa_vals[stmt_idx] = hlo_eval(stmt.args[3])
             end
         elseif hlo_inst == Base.convert
             ty = argextype(stmt.args[3], ir, ir.sptypes)
             arg = argextype(stmt.args[4], ir, ir.sptypes)
-            if arg <: XRTArray{<:Any, (), 0} && isa(ty, Const) && ty.val == eltype(arg)
+            if arg <: HLOArray{<:Any, (), 0} && isa(ty, Const) && ty.val == eltype(arg)
                 # Allow conversions from a scalar array to its element
                 # type and codegen it as a no-op.
                 ssa_vals[stmt_idx] = hlo_eval(stmt.args[4])
@@ -412,14 +412,14 @@ function representable(T)
     return sizeof(T) != 0
 end
 
-function dtype_to_shape(T::Type{<:XRTArray}; tensorflow_order=false)
+function dtype_to_shape(T::Type{<:HLOArray}; tensorflow_order=false)
     shp = convert(Shape, T)
     if tensorflow_order
         shp.layout.minor_to_major = collect((length(shp.layout.minor_to_major) - 1):-1:0)
     end
     shp
 end
-dtype_to_shape(T::Type{<:XLA.XLAScalar}; tensorflow_order=false) = dtype_to_shape(XRTArray{T, (), 0})
+dtype_to_shape(T::Type{<:XLA.XLAScalar}; tensorflow_order=false) = dtype_to_shape(HLOArray{T, (), 0})
 function dtype_to_shape(T::Type{HloToken}; tensorflow_order=false)
     Shape(
         element_type = xla.PrimitiveType.TOKEN

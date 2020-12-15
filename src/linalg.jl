@@ -1,68 +1,68 @@
-function Base.:*(A::XRTArray, B::XRTArray)
+function Base.:*(A::HLOArray, B::HLOArray)
     ddots = DimNums((1,), (0,), (), ())
     HloDot(ddots)(A, B)
 end
-function Base.:*(A::XRTVector, B::XRTArray)
+function Base.:*(A::HLOVector, B::HLOArray)
     ddots = DimNums((1,), (0,), (), ())
     HloDot(ddots)(HloReshape((length(A), 1))(A), B)
 end
-Base.:*(A::XRTArray{<:Any, (), 0}, B::XRTVector) = broadcast(*, A, B)
+Base.:*(A::HLOArray{<:Any, (), 0}, B::HLOVector) = broadcast(*, A, B)
 
 using LinearAlgebra
 
-make_hlo_transpose(A::XRTArray) = HloTranspose((1,0))(A)
-make_hlo_transpose(A::XRTVector) = make_hlo_transpose(HloReshape((length(A), 1))(A))
+make_hlo_transpose(A::HLOArray) = HloTranspose((1,0))(A)
+make_hlo_transpose(A::HLOVector) = make_hlo_transpose(HloReshape((length(A), 1))(A))
 
-function Base.:*(A::Adjoint{<:Any, <:XRTArray}, B::XRTArray)
+function Base.:*(A::Adjoint{<:Any, <:HLOArray}, B::HLOArray)
     ddots = DimNums((1,), (0,), (), ())
     HloDot(ddots)(make_hlo_transpose(A.parent), B)
 end
 
-function Base.:*(A::Adjoint{<:Any, <:XRTVector}, B::XRTVector)
+function Base.:*(A::Adjoint{<:Any, <:HLOVector}, B::HLOVector)
     ddots = DimNums((0,), (0,), (), ())
     HloDot(ddots)(A.parent, B)
 end
 
-function Base.:*(A::Transpose{<:Any, <:XRTArray}, B::XRTArray)
+function Base.:*(A::Transpose{<:Any, <:HLOArray}, B::HLOArray)
     ddots = DimNums((1,), (0,), (), ())
     HloDot(ddots)(make_hlo_transpose(A.parent), B)
 end
 
-function Base.:*(A::XRTArray{T}, B::Transpose{S}) where {T, S}
+function Base.:*(A::HLOArray{T}, B::Transpose{S}) where {T, S}
     ddots = DimNums((1,), (0,), (), ())
-    HloDot(ddots)(convert(XRTArray{promote_type(T, S)}, A), make_hlo_transpose(convert(XRTArray{promote_type(T, S)}, B.parent)))
+    HloDot(ddots)(convert(HLOArray{promote_type(T, S)}, A), make_hlo_transpose(convert(HLOArray{promote_type(T, S)}, B.parent)))
 end
 
-function Base.:*(A::XRTVector{T}, B::Transpose{S, <:XRTVector}) where {T, S}
+function Base.:*(A::HLOVector{T}, B::Transpose{S, <:HLOVector}) where {T, S}
     ddots = DimNums((1,), (0,), (), ())
-    HloDot(ddots)(reshape(convert(XRTArray{promote_type(T, S)}, A), (size(A, 1), 1)),
-        make_hlo_transpose(convert(XRTArray{promote_type(T, S)}, B.parent)))
+    HloDot(ddots)(reshape(convert(HLOArray{promote_type(T, S)}, A), (size(A, 1), 1)),
+        make_hlo_transpose(convert(HLOArray{promote_type(T, S)}, B.parent)))
 end
 
-function Base.:*(A::Transpose{<:Any, <:XRTVector}, B::XRTVector)
+function Base.:*(A::Transpose{<:Any, <:HLOVector}, B::HLOVector)
     ddots = DimNums((0,), (0,), (), ())
     HloDot(ddots)(A.parent, B)
 end
 
-Base.convert(::Type{XRTArray}, x::XLAScalar) = XRTArray(x)
+Base.convert(::Type{HLOArray}, x::XLAScalar) = HLOArray(x)
 
-const XRTScalar{T} = XRTArray{T, (), 0}
-@noinline Base.convert(::Type{Bool}, A::XRTScalar{Bool}) = convert(Array, A)[]
-function Base.promote_rule(A::Type{XRTScalar{T}}, B::Type{XRTScalar{S}}) where {T<:XLAScalar, S<:XLAScalar}
-    XRTArray{promote_type(T, S), (), 0}
+const HLOScalar{T} = HLOArray{T, (), 0}
+@noinline Base.convert(::Type{Bool}, A::HLOScalar{Bool}) = convert(Array, A)[]
+function Base.promote_rule(A::Type{HLOScalar{T}}, B::Type{HLOScalar{S}}) where {T<:XLAScalar, S<:XLAScalar}
+    HLOArray{promote_type(T, S), (), 0}
 end
 
-function Base.promote_rule(A::Type{T}, B::Type{XRTScalar{S}}) where {T<:XLAScalar, S<:XLAScalar}
-    XRTArray{promote_type(T, S), (), 0}
+function Base.promote_rule(A::Type{T}, B::Type{HLOScalar{S}}) where {T<:XLAScalar, S<:XLAScalar}
+    HLOArray{promote_type(T, S), (), 0}
 end
 
 
 # Scalar conversions - Happens via HloConvert. In the future, we may
 # want to make sure to more closely match julia semantics.
-Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{S}) where {T,S} = GenericHloOp{:convert}(T, ())(x)
-Base.convert(::Type{XRTScalar{T}}, x::T) where T = XRTScalar{T}(x)
-Base.convert(::Type{XRTScalar{T}}, x::XRTScalar{T}) where T = x
-Base.convert(::Type{XRTScalar{T}}, x::XLAScalar) where {T<:XLAScalar} = XRTScalar{T}(convert(T, x))
+Base.convert(::Type{HLOScalar{T}}, x::HLOScalar{S}) where {T,S} = GenericHloOp{:convert}(T, ())(x)
+Base.convert(::Type{HLOScalar{T}}, x::T) where T = HLOScalar{T}(x)
+Base.convert(::Type{HLOScalar{T}}, x::HLOScalar{T}) where T = x
+Base.convert(::Type{HLOScalar{T}}, x::XLAScalar) where {T<:XLAScalar} = HLOScalar{T}(convert(T, x))
 
 # A couple of scalar embeddings (could use casette in the future)
 using Base.Meta
@@ -77,58 +77,58 @@ for (binop, xlaop) in (
         (:>>>, Symbol("shift-right-logical")),
         (:^, :power),
     )
-    @eval Base.$(binop)(A::XRTScalar{T},
-                        B::XRTScalar{T}) where {T<:XLAScalar} =
+    @eval Base.$(binop)(A::HLOScalar{T},
+                        B::HLOScalar{T}) where {T<:XLAScalar} =
         GenericHloOp{$(quot(xlaop))}(T, ())(A, B)
-    @eval Base.$(binop)(A::XRTScalar, B::XRTScalar, args::XRTScalar{<:XLAScalar}...) =
+    @eval Base.$(binop)(A::HLOScalar, B::HLOScalar, args::HLOScalar{<:XLAScalar}...) =
         $(binop)(promote(A, B, args...)...)
-    @eval Base.$(binop)(A::XRTScalar, B::Number) = $(binop)(promote(A, B)...)
-    @eval Base.$(binop)(A::Number, B::XRTScalar) = $(binop)(promote(A, B)...)
-    @eval Base.$(binop)(A::XRTScalar{T}, B::XRTScalar{T}) where {T<:XRTArray} =
+    @eval Base.$(binop)(A::HLOScalar, B::Number) = $(binop)(promote(A, B)...)
+    @eval Base.$(binop)(A::Number, B::HLOScalar) = $(binop)(promote(A, B)...)
+    @eval Base.$(binop)(A::HLOScalar{T}, B::HLOScalar{T}) where {T<:HLOArray} =
         Base.$(binop)(convert(T, A), convert(T, B))
 end
-Base.:>>(A::XRTScalar{<:Unsigned}, B::XRTScalar) = A >>> B
-Base.:>>(A::XRTScalar{T}, B::XRTScalar) where {T <: Signed} = GenericHloOp{Symbol("shift-right-arithmetic")}(T, ())(A, B)
+Base.:>>(A::HLOScalar{<:Unsigned}, B::HLOScalar) = A >>> B
+Base.:>>(A::HLOScalar{T}, B::HLOScalar) where {T <: Signed} = GenericHloOp{Symbol("shift-right-arithmetic")}(T, ())(A, B)
 
-Base.:^(A::XRTScalar{T}, B::Integer) where {T} = A ^ XRTArray(Float32(B))
+Base.:^(A::HLOScalar{T}, B::Integer) where {T} = A ^ HLOArray(Float32(B))
 
-Base.literal_pow(::typeof(^), x::XRTScalar, ::Val{0}) = one(x)
-Base.literal_pow(::typeof(^), x::XRTScalar, ::Val{1}) = x
-Base.literal_pow(::typeof(^), x::XRTScalar, ::Val{2}) = x*x
-Base.literal_pow(::typeof(^), x::XRTScalar, ::Val{3}) = x*x*x
+Base.literal_pow(::typeof(^), x::HLOScalar, ::Val{0}) = one(x)
+Base.literal_pow(::typeof(^), x::HLOScalar, ::Val{1}) = x
+Base.literal_pow(::typeof(^), x::HLOScalar, ::Val{2}) = x*x
+Base.literal_pow(::typeof(^), x::HLOScalar, ::Val{3}) = x*x*x
 
 # XRT Scalars are not numbers so import some functions manually
 import Base: /, \, *
 for f in (:/, :\, :*)
     if f != :/
-        @eval ($f)(A::XRTArray{<:Any, (), 0}, B::XRTArray) = broadcast($f, A, B)
+        @eval ($f)(A::HLOArray{<:Any, (), 0}, B::HLOArray) = broadcast($f, A, B)
     end
     if f != :\
-        @eval ($f)(A::XRTArray, B::XRTArray{<:Any, (), 0}) = broadcast($f, A, B)
+        @eval ($f)(A::HLOArray, B::HLOArray{<:Any, (), 0}) = broadcast($f, A, B)
     end
 end
 
 
-embed(x::XLAScalar) = XRTArray(x)
+embed(x::XLAScalar) = HLOArray(x)
 embed(x) = x
 
-concat_dims(::Type{<:XRTArray{T, Sz1}}, Sz2::Tuple) where {T, Sz1} = (Sz1..., Sz2...)
+concat_dims(::Type{<:HLOArray{T, Sz1}}, Sz2::Tuple) where {T, Sz1} = (Sz1..., Sz2...)
 concat_dims(::Type, Sz2::Tuple) where {T, Sz1} = Sz2
 
 @noinline make_zeros_dims_tuple(::Type{T}) where {T} = ntuple(i->i-1, ndims(T))
 
-function Base.zeros(::Type{XRTArray{T, Sz, N}}) where {T, Sz, N}
+function Base.zeros(::Type{HLOArray{T, Sz, N}}) where {T, Sz, N}
     # TODO: This assignment being necessary is probably a compiler bug
     TT = T
-    HloBroadcast(make_zeros_dims_tuple(TT), Sz)(XRTArray((zero(TT),)))::XRTArray{T, Sz, N}
+    HloBroadcast(make_zeros_dims_tuple(TT), Sz)(HLOArray((zero(TT),)))::HLOArray{T, Sz, N}
 end
-Base.zero(X::Type{XRTArray{T, Sz, N}}) where {T, Sz, N} = zeros(X)
+Base.zero(X::Type{HLOArray{T, Sz, N}}) where {T, Sz, N} = zeros(X)
 
-Base.zero(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(zero(T))
-Base.zero(A::XRTArray) = zero(typeof(A))
-Base.one(A::Type{XRTArray{T, (), 0}}) where T = XRTArray(one(T))
-Base.one(A::XRTArray{<:Any, (), 0}) = one(typeof(A))
-Base.max(A::XRTArray{T, (), 0}, B::XRTArray{T, (), 0}) where {T<:XLAScalar} =
+Base.zero(A::Type{HLOArray{T, (), 0}}) where T = HLOArray(zero(T))
+Base.zero(A::HLOArray) = zero(typeof(A))
+Base.one(A::Type{HLOArray{T, (), 0}}) where T = HLOArray(one(T))
+Base.one(A::HLOArray{<:Any, (), 0}) = one(typeof(A))
+Base.max(A::HLOArray{T, (), 0}, B::HLOArray{T, (), 0}) where {T<:XLAScalar} =
     GenericHloOp{:maximum}(T, ())(A, B)
 
 for (fname, hlo) in (
@@ -140,28 +140,28 @@ for (fname, hlo) in (
         (:log, :log),
         (:log1p, Symbol("log-plus-one"))
     )
-    @eval Base.$(fname)(x::XRTArray{T, (), 0}) where {T} = GenericHloOp{$(quot(hlo))}(T, ())(x)
+    @eval Base.$(fname)(x::HLOArray{T, (), 0}) where {T} = GenericHloOp{$(quot(hlo))}(T, ())(x)
 end
 
-Base.sqrt(A::XRTArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, XRTArray(convert(T, 0.5)))
+Base.sqrt(A::HLOArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, HLOArray(convert(T, 0.5)))
 
-@eval Base.isless(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+@eval Base.isless(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
     convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
-@eval Base.:(<=)(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+@eval Base.:(<=)(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B)
-@eval Base.:(==)(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+@eval Base.:(==)(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("equal-to")))}(Bool, ())(A, B)
-@eval Base.:(!=)(A::XRTArray{<:Any, (), 0}, B::XRTArray{<:Any, (), 0}) =
+@eval Base.:(!=)(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
     GenericHloOp{$(QuoteNode(Symbol("not-equal-to")))}(Bool, ())(A, B)
-Base.inv(x::XRTScalar{T}) where {T} = XRTArray(one(T))/x
+Base.inv(x::HLOScalar{T}) where {T} = HLOArray(one(T))/x
 
-Base.:-(x::XRTScalar{T}) where {T} = -(XRTArray(zero(T)), x)
+Base.:-(x::HLOScalar{T}) where {T} = -(HLOArray(zero(T)), x)
 
-# XRTArrays are immutable. Copy is identity.
-Base.copy(A::XRTArray) = A
-#Base.transpose(A::XRTArray) = HloTranspose((1,0))(A)
-#Base.adjoint(A::XRTArray{<:Real}) = HloTranspose((1,0))(A)
-Base.permutedims(A::XRTArray, perm) = HloTranspose(map(x->x-1, perm))(A)
+# HLOArrays are immutable. Copy is identity.
+Base.copy(A::HLOArray) = A
+#Base.transpose(A::HLOArray) = HloTranspose((1,0))(A)
+#Base.adjoint(A::HLOArray{<:Real}) = HloTranspose((1,0))(A)
+Base.permutedims(A::HLOArray, perm) = HloTranspose(map(x->x-1, perm))(A)
 
 
 # Recursive version of promote shape
@@ -184,18 +184,18 @@ function promote_shape_rec(a, b)
     a
 end
 
-function Base.promote_shape(a::XRTArray, b::XRTArray)
+function Base.promote_shape(a::HLOArray, b::HLOArray)
     promote_shape_rec(axes(a), axes(b))
 end
 
 import Base.Broadcast
 
-Base.similar(x::XRTArray) = error()
+Base.similar(x::HLOArray) = error()
 
-struct XRTArrayStyle{N} <: Broadcast.AbstractArrayStyle{N} end
-(::Type{<:XRTArrayStyle})(::Val{N}) where {N} = XRTArrayStyle{N}()
-Broadcast.BroadcastStyle(::Type{<:XRTArray{<:Any,Dims,N}}) where {Dims, N} =
-    XRTArrayStyle{N}()
+struct HLOArrayStyle{N} <: Broadcast.AbstractArrayStyle{N} end
+(::Type{<:HLOArrayStyle})(::Val{N}) where {N} = HLOArrayStyle{N}()
+Broadcast.BroadcastStyle(::Type{<:HLOArray{<:Any,Dims,N}}) where {Dims, N} =
+    HLOArrayStyle{N}()
 
 @noinline _ccdims(s) = tuple(findall(==(1), s)...)
 @noinline _ncdims(s) = tuple(findall(x->x!=(1), s)...)
@@ -209,8 +209,8 @@ Broadcast.BroadcastStyle(::Type{<:XRTArray{<:Any,Dims,N}}) where {Dims, N} =
     if size(arg) != rsize
         collapse_dims = ccdims(size(arg))
         non_collapse_dims = ncdims(size(arg))
-        if !isa(arg, XRTArray)
-            arg = convert(XRTArray, arg)
+        if !isa(arg, HLOArray)
+            arg = convert(HLOArray, arg)
         end
         if collapse_dims != ()
             arg = HloReshape(
@@ -226,17 +226,17 @@ Broadcast.BroadcastStyle(::Type{<:XRTArray{<:Any,Dims,N}}) where {Dims, N} =
 end
 
 # TODO: This should probably assert that the sessions are equivalent
-any_sess(a::XRTArray, args::AnyXLA...) = a.storage.sess
+any_sess(a::HLOArray, args::AnyXLA...) = a.storage.sess
 any_sess(a::XLAScalar, args::AnyXLA...) = any_sess(args...)
 
-function Broadcast.copy(bc::Broadcast.Broadcasted{<:XRTArrayStyle})
+function Broadcast.copy(bc::Broadcast.Broadcasted{<:HLOArrayStyle})
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
     bc′ = Broadcast.flatten(bc)
     if Base.isconcretetype(ElType)
         args = bc′.args
         # This could be axes(bc′) if we had better constant prop
         rsize = map(length, Broadcast.combine_axes(bc′.args...))
-        args = map(arg->convert(XRTArray, broadcast_to_size(arg, rsize)), bc′.args)
+        args = map(arg->convert(HLOArray, broadcast_to_size(arg, rsize)), bc′.args)
         return HloMap{Core.Typeof(bc′.f)}()(bc′.f, args...)
     end
     # TODO: Pull back CPU, do this there
@@ -253,7 +253,7 @@ using NNlib
     end
 end
 
-function (::NNlib._conv{pad, stride, dilation})(input::XRTArray{T}, kernel::XRTArray{T}) where {T, pad, stride, dilation}
+function (::NNlib._conv{pad, stride, dilation})(input::HLOArray{T}, kernel::HLOArray{T}) where {T, pad, stride, dilation}
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
     dilation_ = NNlib.padtuple(kernel, dilation)
     sz_ = size(kernel)
@@ -266,7 +266,7 @@ function (::NNlib._conv{pad, stride, dilation})(input::XRTArray{T}, kernel::XRTA
     HloConv(windows, convdims)(input, kernel)
 end
 
-function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray{T}, input::XRTArray{T}, kernel::XRTArray) where {T, pad, stride, dilation}
+function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::HLOArray{T}, input::HLOArray{T}, kernel::HLOArray) where {T, pad, stride, dilation}
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
     dilation_ = NNlib.padtuple(kernel, dilation)
     mirrored = kernel #permutedims(kernel, (2, 1, 3, 4)) #HloRev((0,1))(kernel)
@@ -292,7 +292,7 @@ function (::NNlib._∇conv_data{pad, stride, dilation, 0})(dy::XRTArray{T}, inpu
     r
 end
 
-function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::XRTArray{T}, input::XRTArray{T}, kernel::XRTArray) where {T, pad, stride, dilation}
+function (::NNlib._∇conv_filter{pad, stride, dilation, 0})(dy::HLOArray{T}, input::HLOArray{T}, kernel::HLOArray) where {T, pad, stride, dilation}
     # TODO: Validate that this is correct. Unfortunately, the NNlib
     # implementation itself is broken, so we need to fix that first
     pad_, stride_ = NNlib.padtuple(input, pad), NNlib.padtuple(input, stride)
@@ -330,24 +330,24 @@ function make_pooling_windows(x, k, pad, stride)
     end
 end
 
-function NNlib.maxpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
+function NNlib.maxpool(x::HLOArray, k; pad = map(_->0,k), stride = k)
     HloReduceWindow{typeof(max)}(
         make_pooling_windows(x, k, pad, stride)
-    )(max, x, XRTArray(typemin(eltype(x))))
+    )(max, x, HLOArray(typemin(eltype(x))))
 end
 
-function NNlib.meanpool(x::XRTArray, k; pad = map(_->0,k), stride = k)
+function NNlib.meanpool(x::HLOArray, k; pad = map(_->0,k), stride = k)
     s = HloReduceWindow{typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
-    )(+, x, XRTArray(zero(eltype(x))))
+    )(+, x, HLOArray(zero(eltype(x))))
     wsize = convert(eltype(x), prod(k))
-    s ./ XRTArray(wsize)
+    s ./ HLOArray(wsize)
 end
 
-function NNlib.∇maxpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
+function NNlib.∇maxpool(dy::HLOArray, y::HLOArray, x::HLOArray, k; pad = map(_->0,k), stride = k)
     HloSelectAndScatter{typeof(>=), typeof(+)}(
         make_pooling_windows(x, k, pad, stride)
-    )(>=, +, x, dy, XRTArray(zero(eltype(x))))
+    )(>=, +, x, dy, HLOArray(zero(eltype(x))))
 end
 
 function make_pad_config(x, k, pad, stride)
@@ -361,7 +361,7 @@ function make_pad_config(x, k, pad, stride)
     end
 end
 
-function NNlib.∇meanpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(_->0,k), stride = k)
+function NNlib.∇meanpool(dy::HLOArray, y::HLOArray, x::HLOArray, k; pad = map(_->0,k), stride = k)
     # General algorithm for ∇meanpool.
     # The idea here is relatively simple. Without loss of generality, we can ignore the
     # division by a constant - i.e. we're looking at the gradient of a (potentially,
@@ -394,11 +394,11 @@ function NNlib.∇meanpool(dy::XRTArray, y::XRTArray, x::XRTArray, k; pad = map(
     # TODO: Does it make sense to special case to the case of non-overlapping windows
     # or does XLA take care of that?
     wsize = convert(eltype(x), prod(k))
-    dy = dy ./ XRTArray(wsize)
-    pdy = HloPad(make_pad_config(x, k, pad, stride))(dy, XRTArray(zero(eltype(dy))))
+    dy = dy ./ HLOArray(wsize)
+    pdy = HloPad(make_pad_config(x, k, pad, stride))(dy, HLOArray(zero(eltype(dy))))
     HloReduceWindow{typeof(+)}(
         make_pooling_windows(x, k, pad, map(_->1, k))
-    )(+, pdy, XRTArray(zero(eltype(x))))
+    )(+, pdy, HLOArray(zero(eltype(x))))
 end
 
 @Base.pure dims_tuple(n) = tuple((0:n-1)...)
@@ -407,13 +407,13 @@ dims_tuple(A, ::Colon) = dims_tuple(ndims(A))
 dims_tuple(A, t::Tuple) = map(x->x-1, t)
 dims_tuple(A, n::Int) = (n-1,)
 
-@inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Union{Int,Colon}}})
+@inline function Base.reshape(A::HLOArray, dims::Tuple{Vararg{Union{Int,Colon}}})
     reshape(A, Base._reshape_uncolon(A, dims))
 end
 
 @Base.pure rev_tuple(n) = reverse(n)
 
-@inline function Base.reshape(A::XRTArray, dims::Tuple{Vararg{Int}})
+@inline function Base.reshape(A::HLOArray, dims::Tuple{Vararg{Int}})
     prod(dims) == prod(size(A)) || Base._throw_dmrsa(dims, prod(size(A)))
     HloTranspose(rev_dims_tuple(length(dims)))(
        HloReshape(rev_tuple(dims))(
@@ -424,11 +424,11 @@ end
 end
 
 @Base.pure reduced_dimensions_collapes(sz, dims) = ntuple(i->i in dims ? 1 : sz[i], length(sz))
-function Base.mapreduce(f, op, A::XRTArray; dims=:)
+function Base.mapreduce(f, op, A::HLOArray; dims=:)
     dt = dims_tuple(A, dims)
     res = HloReduce{Core.Typeof(op)}(dt)(op,
         HloMap{Core.Typeof(f)}()(f, A),
-        XRTArray(zero(eltype(A)))
+        HLOArray(zero(eltype(A)))
     )
     if dims != (:)
         # Put back the dimensions that HloReduce dropped;
@@ -440,47 +440,47 @@ end
 
 using Flux
 
-function Flux.rand_similar(x::XRTArray{T, Shape}) where {T, Shape}
+function Flux.rand_similar(x::HLOArray{T, Shape}) where {T, Shape}
     HloRng(T, Shape, xla.RandomDistribution.RNG_UNIFORM)(
-        XRTArray(zero(T)),
-        XRTArray(one(T)))
+        HLOArray(zero(T)),
+        HLOArray(one(T)))
 end
 
 using LinearAlgebra
 # TODO: Base scales by maxabs if necessary. Do we need that?
-function LinearAlgebra.dot(A::XRTVector, B::XRTVector)
+function LinearAlgebra.dot(A::HLOVector, B::HLOVector)
     ddots = DimNums((0,), (0,), (), ())
     HloDot(ddots)(A, B)
 end
-LinearAlgebra.norm2(A::XRTArray, p) = sqrt(dot(A, A))
-function LinearAlgebra.norm(A::XRTArray, p::Real)
+LinearAlgebra.norm2(A::HLOArray, p) = sqrt(dot(A, A))
+function LinearAlgebra.norm(A::HLOArray, p::Real)
     if p == 2
         return LinearAlgebra.norm2(A, p)
     end
     error("Not implemented")
 end
 
-function Base.setindex(A::XRTVector{T}, v::T, i::XRTArray{<:Integer, (), 0}) where {T}
-    Base.setindex(A, XRTArray{T, (), 0}(v), i)
+function Base.setindex(A::HLOVector{T}, v::T, i::HLOArray{<:Integer, (), 0}) where {T}
+    Base.setindex(A, HLOArray{T, (), 0}(v), i)
 end
-function Base.setindex(A::XRTVector{T}, v::XRTArray{T, (), 0}, i::XRTArray{<:Integer, (), 0}) where {T}
+function Base.setindex(A::HLOVector{T}, v::HLOArray{T, (), 0}, i::HLOArray{<:Integer, (), 0}) where {T}
     # TODO: It would be better to handle the dim mapping internally,
     # but that requires access to the julia element type, which we don't currently
     # expose
     vb = HloBroadcast(ntuple(i->i-1, ndims(T)), ntuple(_->1, ndims(A)))(v)
     inds = HloBroadcast((), (1,))(i - 1)
     if ndims(T) != 0
-        ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
+        ones = HloBroadcast((), (ndims(T),))(HLOArray(1))
         inds = HloConcatenate(0)(ones, inds)
     end
     HloDynamicUpdateSlice()(A, vb, inds)
 end
-Base.setindex(A::XRTVector, v, i::Int64) = Base.setindex(A, v, XRTArray{Int64, (), 0}(i))
+Base.setindex(A::HLOVector, v, i::Int64) = Base.setindex(A, v, HLOArray{Int64, (), 0}(i))
 
 # TODO: Support trailing singleton
 @Base.pure start_idxs_tuple(rs) = ntuple(i->isa(rs[i], Colon) ? 0 : first(rs[i]) - 1, Val(length(rs)))
-function Base.setindex(A::XRTArray{T,<:Any,N}, up::XRTArray{T,<:Any,N}, rs::Vararg{Union{UnitRange{<:Integer}, Colon}, N}) where {T, N}
-    inds = map(x->HloBroadcast((), (1,))(XRTArray(x)), start_idxs_tuple(rs))
+function Base.setindex(A::HLOArray{T,<:Any,N}, up::HLOArray{T,<:Any,N}, rs::Vararg{Union{UnitRange{<:Integer}, Colon}, N}) where {T, N}
+    inds = map(x->HloBroadcast((), (1,))(HLOArray(x)), start_idxs_tuple(rs))
     HloDynamicUpdateSlice()(A, up, HloConcatenate(0)(inds...))
 end
 
@@ -490,14 +490,14 @@ end
             i->tInds.parameters[i] <: Colon, 1:length(tInds.parameters))...))
 end
 
-function Base.getindex(A::XRTArray{T, <:Any, N}, inds::Vararg{Union{Colon, XRTArray{<:Integer, (), 0}}, N}) where {T, N}
+function Base.getindex(A::HLOArray{T, <:Any, N}, inds::Vararg{Union{Colon, HLOArray{<:Integer, (), 0}}, N}) where {T, N}
     # TODO: It would be better to handle the dim mapping internally,
     # but that requires access to the julia element type, which we don't currently
     # expose
     ind_vector = HloConcatenate(0)(ntuple(Val(length(inds))) do i
         if isa(inds[i], Colon)
-            HloBroadcast((), (1,))(XRTArray(0))
-        elseif isa(inds[i], XRTArray)
+            HloBroadcast((), (1,))(HLOArray(0))
+        elseif isa(inds[i], HLOArray)
             HloBroadcast((), (1,))(inds[i] - 1)
         end
     end...)
@@ -505,7 +505,7 @@ function Base.getindex(A::XRTArray{T, <:Any, N}, inds::Vararg{Union{Colon, XRTAr
         isa(inds[i], Colon) ? size(A, i) : 1
     end
     if ndims(T) != 0
-        ones = HloBroadcast((), (ndims(T),))(XRTArray(1))
+        ones = HloBroadcast((), (ndims(T),))(HLOArray(1))
         ind_vector = HloConcatenate(0)(ones, ind_vector)
         sizes = (size(T)..., sizes...)
     end
@@ -517,29 +517,29 @@ function Base.getindex(A::XRTArray{T, <:Any, N}, inds::Vararg{Union{Colon, XRTAr
     end
     return ret
 end
-Base.getindex(A::XRTVector, i::Int64) = Base.getindex(A, XRTArray{Int64, (), 0}(i))
+Base.getindex(A::HLOVector, i::Int64) = Base.getindex(A, HLOArray{Int64, (), 0}(i))
 # Override for scalars
-Base.getindex(x::XRTArray{T,(),0}) where {T} = x
+Base.getindex(x::HLOArray{T,(),0}) where {T} = x
 
 @Base.pure function compute_gather_tuples(A, idxs)
     array_idxs = tuple(Iterators.filter(i->!(idxs.parameters[i] <: Colon), 1:length(idxs.parameters))...)
     offset_dims = tuple(Iterators.filter(i->idxs.parameters[i+1] <: Colon, 0:length(idxs.parameters)-1)...)
-    start_index_map = tuple(Iterators.filter(i->idxs.parameters[i+1] <: XRTArray, 0:length(idxs.parameters)-1)...)
+    start_index_map = tuple(Iterators.filter(i->idxs.parameters[i+1] <: HLOArray, 0:length(idxs.parameters)-1)...)
     slice_sizes = map(i->size(A, i), tuple(filter(i->idxs.parameters[i] <: Colon, 1:length(idxs.parameters))...))
     slice_sizes = tuple(slice_sizes..., (1 for _ in 1:length(array_idxs))...)
     (array_idxs, offset_dims, start_index_map, slice_sizes)
 end
 
-function Base.getindex(A::XRTArray{<:Any, <:Any, N}, idxs::Vararg{Union{Colon, XRTArray{<:Integer, <:Any, 1}}, N}) where {N}
+function Base.getindex(A::HLOArray{<:Any, <:Any, N}, idxs::Vararg{Union{Colon, HLOArray{<:Integer, <:Any, 1}}, N}) where {N}
     (array_idxs_idxs, offset_dims, start_index_map, slice_sizes) = compute_gather_tuples(typeof(A), typeof(idxs))
     array_idxs = ntuple(i->idxs[array_idxs_idxs[i]], Val{length(array_idxs_idxs)}())
     M = length(array_idxs)
     if length(array_idxs) == 1
-        gather_idxs = array_idxs[1] .- XRTArray(one(eltype(array_idxs[1])))
+        gather_idxs = array_idxs[1] .- HLOArray(one(eltype(array_idxs[1])))
     else
         gather_shape = map(length, array_idxs)
         gather_idxs = HloConcatenate(M)(ntuple(Val{M}) do i
-            HloBroadcast((i,), (gather_shape..., 1))(array_idxs[i] .- XRTArray(one(eltype(array_idxs[i]))))
+            HloBroadcast((i,), (gather_shape..., 1))(array_idxs[i] .- HLOArray(one(eltype(array_idxs[i]))))
         end...)
     end
     dims = GatherDims(
@@ -560,38 +560,38 @@ end
 
 @Base.pure slices_tuple(rs, sz) = ntuple(i->compute_slice_dim(rs, sz, i), Val(length(sz)))
 
-function Base.getindex(A::XRTArray{<:Any, <:Any, N}, rs::Vararg{Union{UnitRange{<:Integer}, Colon}, N}) where {N}
+function Base.getindex(A::HLOArray{<:Any, <:Any, N}, rs::Vararg{Union{UnitRange{<:Integer}, Colon}, N}) where {N}
     HloSlice(slices_tuple(rs, size(typeof(A))))(A)
 end
 
 using DiffRules
-DiffRules.select(p::XRTArray{Bool, (), 0}, x::XRTArray{T, (), 0}, y::XRTArray{T, (), 0}) where {T} =
+DiffRules.select(p::HLOArray{Bool, (), 0}, x::HLOArray{T, (), 0}, y::HLOArray{T, (), 0}) where {T} =
     GenericHloOp{:select}(T, ())(p, x, y)
-DiffRules.select(p::Bool, x::XRTArray{T, (), 0}, y::XRTArray{T, (), 0}) where {T} =
-    GenericHloOp{:select}(T, ())(XRTArray{Bool, (), 0}(p), x, y)
+DiffRules.select(p::Bool, x::HLOArray{T, (), 0}, y::HLOArray{T, (), 0}) where {T} =
+    GenericHloOp{:select}(T, ())(HLOArray{Bool, (), 0}(p), x, y)
 
-function XRTArray(a::UnitRange{T}) where {T}
+function HLOArray(a::UnitRange{T}) where {T}
     HloIota(T, (length(a),), 0)() .+ first(a)
 end
 
-function XRTArray(a::Transpose)
-    make_hlo_transpose(XRTArray(a.parent))
+function HLOArray(a::Transpose)
+    make_hlo_transpose(HLOArray(a.parent))
 end
 
-function change_eltype(T::Type, x::XRTArray)
+function change_eltype(T::Type, x::HLOArray)
     GenericHloOp{:convert}(T, size(x))(x)
 end
-change_eltype(::Type{T}, x::XRTArray{T}) where {T} = x
-Base.convert(::Type{XRTArray{T}}, x::XRTArray{S}) where {T,S} = change_eltype(T, x)
-Base.convert(::Type{XRTArray{T}}, x::XRTArray{T}) where {T} = x
-Base.convert(::Type{XRTArray}, x::XRTArray) = x
+change_eltype(::Type{T}, x::HLOArray{T}) where {T} = x
+Base.convert(::Type{HLOArray{T}}, x::HLOArray{S}) where {T,S} = change_eltype(T, x)
+Base.convert(::Type{HLOArray{T}}, x::HLOArray{T}) where {T} = x
+Base.convert(::Type{HLOArray}, x::HLOArray) = x
 
 for T in Base.uniontypes(XLA.XLAScalar)
-    @eval (::Type{$T})(x::XRTScalar{S}) where {S<:XLAScalar} = convert(XRTArray{$T}, x)
-    @eval (::Type{$T})(x::XRTScalar{$T}) where {S<:XLAScalar} = x
+    @eval (::Type{$T})(x::HLOScalar{S}) where {S<:XLAScalar} = convert(HLOArray{$T}, x)
+    @eval (::Type{$T})(x::HLOScalar{$T}) where {S<:XLAScalar} = x
 end
 
-@Base.pure @noinline function padding_tuple(aiT::Type{<:XRTArray}, dims::Int)
+@Base.pure @noinline function padding_tuple(aiT::Type{<:HLOArray}, dims::Int)
     ntuple(_->1, Val(dims))
 end
 
@@ -609,27 +609,27 @@ function (nt::ntupler{dims, T})(i::Int) where {dims, T}
     end
 end
 
-function _cat(dims::Int, a::XRTArray{T}...) where {T}
+function _cat(dims::Int, a::HLOArray{T}...) where {T}
     b = ntuple(ntupler{dims, typeof(a)}(a), length(a))
     HloConcatenate(dims-1)(b...)
 end
-function _cat(dims::Int, a::XRTArray...)
+function _cat(dims::Int, a::HLOArray...)
     let eT = Base.promote_eltype(a...)
         _cat(dims, map(a->change_eltype(eT, a), a)...)
     end
 end
-Base.hcat(a::XRTArray...) = _cat(2, a...)
-Base.vcat(a::XRTArray...) = _cat(1, a...)
-Base.cat(a::XRTArray...; dims) = _cat(dims, a...)
+Base.hcat(a::HLOArray...) = _cat(2, a...)
+Base.vcat(a::HLOArray...) = _cat(1, a...)
+Base.cat(a::HLOArray...; dims) = _cat(dims, a...)
 
 using Statistics
-@Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims) = prod(size(T)[[dims...]])
-@Base.pure @noinline count_summands(T::Type{<:XRTArray}, dims::Colon) = prod(size(T))
+@Base.pure @noinline count_summands(T::Type{<:HLOArray}, dims) = prod(size(T)[[dims...]])
+@Base.pure @noinline count_summands(T::Type{<:HLOArray}, dims::Colon) = prod(size(T))
 dimsum(A, dims) = sum(A; dims=dims)
-function Statistics.mean(A::XRTArray; dims=:)
+function Statistics.mean(A::HLOArray; dims=:)
     summed = dimsum(A, dims)
     x = convert(eltype(A), count_summands(typeof(A), dims))
-    nsummands = XRTArray(x)
+    nsummands = HLOArray(x)
     summed ./ nsummands
 end
 
@@ -649,7 +649,7 @@ Base.@pure @noinline function compute_dropdims_d(A, dims)
     end
     return d
 end
-function Base._dropdims(A::XRTArray, dims::Base.Dims)
+function Base._dropdims(A::HLOArray, dims::Base.Dims)
     reshape(A, compute_dropdims_d(typeof(A), dims))
 end
 
@@ -661,7 +661,7 @@ end
     dim_mapping, result_szs, final_sz
 end
 
-function Base.repeat(A::XRTArray, dims::Integer...)
+function Base.repeat(A::HLOArray, dims::Integer...)
     dims_mapping, result_szs, final_sz = make_repeat_dims(size(A), dims)
     XLA.HloReshape(final_sz)(XLA.HloBroadcast(dims_mapping, result_szs)(A))
 end

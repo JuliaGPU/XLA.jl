@@ -45,7 +45,7 @@ module XLA
     include("abstractinterpret.jl")
     include("array.jl")
 
-    export XRTArray, GenericHloOp, HloConstant, HloDot, HloSlice, ImmutableChain, XRTAllocation, XRTRemoteStruct
+    export HLOArray, GenericHloOp, HloConstant, HloDot, HloSlice, ImmutableChain, XRTAllocation, XRTRemoteStruct
 
     # TPU Sessions/devices
     export TPUSession, all_tpu_devices

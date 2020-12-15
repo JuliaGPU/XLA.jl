@@ -8,8 +8,8 @@ struct TPUBatchNorm{F,V,W}
    γ::V  # scale
    μ::W  # moving mean
    σ::W  # moving std
-   ϵ::XRTArray{Float32, (), 0}
-   momentum::XRTArray{Float32, (), 0}
+   ϵ::HLOArray{Float32, (), 0}
+   momentum::HLOArray{Float32, (), 0}
    #active::Bool
 end
 
@@ -91,8 +91,8 @@ function update_params(BN::TPUBatchNorm{F,V,W}, updates, state, η, β) where {F
       new_λ,
       new_β,
       new_γ,
-      (XRTArray(1f0) - mtm) .* BN.μ + mtm .* updates.μ,
-      (XRTArray(1f0) - mtm) .* BN.σ + mtm .* updates.σ,
+      (HLOArray(1f0) - mtm) .* BN.μ + mtm .* updates.μ,
+      (HLOArray(1f0) - mtm) .* BN.σ + mtm .* updates.σ,
       BN.ϵ, mtm #, BN.active
     )
     new_state = tuple(

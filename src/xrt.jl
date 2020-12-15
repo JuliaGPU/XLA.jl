@@ -149,10 +149,10 @@ mutable struct XRTAllocation
         res = new(com.sess, com.device, h)
         finalizer(close, res)
 
-        return if com.rt <: XRTArray
+        return if com.rt <: HLOArray
             T = convert(Type, XlaType(com.shape.result.element_type))
             dims = (com.shape.result.dimensions...,)
-            XRTArray{T, dims, length(dims)}(res)
+            HLOArray{T, dims, length(dims)}(res)
         else
             XRTRemoteStruct{com.rt}(res)
         end
@@ -163,8 +163,8 @@ mutable struct XRTAllocation
 		sess = compilation_handle.sess
 
 		# Helper functions to prepare an argument for sending to the TPU
-		prepare_arg(x::Number) = XRTArray(sess, x)
-		prepare_arg(x::AbstractArray) = XRTArray(sess, x)
+		prepare_arg(x::Number) = HLOArray(sess, x)
+		prepare_arg(x::AbstractArray) = HLOArray(sess, x)
 		prepare_arg(x::Tuple) = prepare_arg.(x)
 		prepare_arg(x) = XRTRemoteStruct(sess, x)
 

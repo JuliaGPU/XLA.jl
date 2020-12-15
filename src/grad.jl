@@ -5,15 +5,15 @@ using SpecialFunctions
 using NaNMath
 using Zygote: @adjoint
 
-ForwardDiff.can_dual(::Type{XRTArray{T,(),0}} where T) = true
-#Zygote.isscalar(::XRTArray{<:Any,(),0}) = true
+ForwardDiff.can_dual(::Type{HLOArray{T,(),0}} where T) = true
+#Zygote.isscalar(::HLOArray{<:Any,(),0}) = true
 
-#Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v::XRTScalar) where {T, dims, N} =
+#Zygote.fill_similar_array(x::HLOArray{T, dims, N}, v::HLOScalar) where {T, dims, N} =
 #    HloBroadcast((), dims)(v)
-#Zygote.fill_similar_array(x::XRTArray{T, dims, N}, v::XLAScalar) where {T, dims, N} =
-#    Zygote.fill_similar_array(x, convert(XRTArray{T, (), 0}, v))
+#Zygote.fill_similar_array(x::HLOArray{T, dims, N}, v::XLAScalar) where {T, dims, N} =
+#    Zygote.fill_similar_array(x, convert(HLOArray{T, (), 0}, v))
 
-sum_adjoint(xs::XRTArray, dims::Colon) = sum(xs), Δ->(Zygote.fill_similar_array(xs, Δ),)
+sum_adjoint(xs::HLOArray, dims::Colon) = sum(xs), Δ->(Zygote.fill_similar_array(xs, Δ),)
 @Base.pure function compute_sum_adj_dims(sz, dim)
     a = Int[]
     b = Int[]
@@ -27,7 +27,7 @@ sum_adjoint(xs::XRTArray, dims::Colon) = sum(xs), Δ->(Zygote.fill_similar_array
     end
     tuple(a...), tuple(b...)
 end
-function sum_adjoint(xs::XRTArray{<:Any, rt_dims}, dim::Int) where rt_dims
+function sum_adjoint(xs::HLOArray{<:Any, rt_dims}, dim::Int) where rt_dims
     sum(xs, dims=dim), let vdim=Val(dim)
         Δ -> begin
             dims_dropped, all_but_dim = compute_sum_adj_dims(size(Δ), unval(vdim))
@@ -36,7 +36,7 @@ function sum_adjoint(xs::XRTArray{<:Any, rt_dims}, dim::Int) where rt_dims
     end
 end
 
-@adjoint function sum(xs::XRTArray; dims = :)
+@adjoint function sum(xs::HLOArray; dims = :)
   sum_adjoint(xs, dims)
 end
 
@@ -44,7 +44,7 @@ using Base.Broadcast
 using Base.Broadcast: Broadcasted, materialize
 
 #=
-function Zygote.broadcast_gradient(bc::Broadcasted{S}, ::Type{T}) where {S <: XLA.XLA.XRTArrayStyle, T}
+function Zygote.broadcast_gradient(bc::Broadcasted{S}, ::Type{T}) where {S <: XLA.XLA.HLOArrayStyle, T}
     # XLA doesn't currently have multi-output kMap
     dest = let f = bc.f
         materialize(Broadcasted{S}((args...)->f(args...).value, bc.args, bc.axes))
@@ -61,7 +61,7 @@ end
 for (M, f, arity) in DiffRules.diffrules()
   arity == 1 || continue
   @eval begin
-    @adjoint $M.$f(x::XRTScalar) = $M.$f(x),
+    @adjoint $M.$f(x::HLOScalar) = $M.$f(x),
       Δ -> (Δ * $(DiffRules.diffrule(M, f, :x)),)
   end
 end
@@ -70,19 +70,19 @@ for (M, f, arity) in DiffRules.diffrules()
   arity == 2 || continue
   da, db = DiffRules.diffrule(M, f, :a, :b)
   @eval begin
-    @adjoint $M.$f(a::XRTScalar, b::XRTScalar) = $M.$f(a, b),
+    @adjoint $M.$f(a::HLOScalar, b::HLOScalar) = $M.$f(a, b),
       Δ -> (Δ * $da, Δ * $db)
-    @adjoint $M.$f(a::Number, b::XRTScalar) = $M.$f(a, b),
+    @adjoint $M.$f(a::Number, b::HLOScalar) = $M.$f(a, b),
       Δ -> (Δ * $da, Δ * $db)
-    @adjoint $M.$f(a::XRTScalar, b::Number) = $M.$f(a, b),
+    @adjoint $M.$f(a::HLOScalar, b::Number) = $M.$f(a, b),
       Δ -> (Δ * $da, Δ * $db)
   end
 end
 
-@adjoint XRTArray(a::Real) = XRTArray(a), Δ -> (Δ,)
+@adjoint HLOArray(a::Real) = HLOArray(a), Δ -> (Δ,)
 
 # This is necessary, because even XRT scalars are AbstractArrays
-Zygote.accum(a::XRTArray, b::XRTArray) = a+b
+Zygote.accum(a::HLOArray, b::HLOArray) = a+b
 
 @adjoint function execute(args...)
     error("Zygote should not reach the HLO layer. Please define gradients for functions higher up.")
@@ -98,7 +98,7 @@ function (gb::getindex_back{T, Ti})(Δ) where {T, Ti}
     (Δ′, ntuple(_->nothing, Val(length(Ti.parameters)))...)
 end
 
-@adjoint function getindex(xs::XRTArray, i...)
+@adjoint function getindex(xs::HLOArray, i...)
     xs[i...], getindex_back{typeof(xs), typeof(i)}(i)
 end
 
@@ -114,7 +114,7 @@ end
 
 unval(v::Val{x}) where {x} = x
 
-@adjoint function Base.repeat(A::XRTArray, dims::Integer...)
+@adjoint function Base.repeat(A::HLOArray, dims::Integer...)
     repeat(A, dims...), let Asz=Val(size(A)), vdims=Val(dims)
         function (Δ)
             sz_A = unval(Asz)
@@ -123,7 +123,7 @@ unval(v::Val{x}) where {x} = x
             folded_back = XLA.HloReshape(result_szs)(Δ)
             summed = HloReduceWindow{typeof(+)}(
                 make_repeat_adjoint_window(result_szs, dims_mapping)
-            )(+, folded_back, XRTArray(zero(eltype(Δ))))
+            )(+, folded_back, HLOArray(zero(eltype(Δ))))
             (HloReshape(sz_A)(summed), ntuple(_->nothing, length(ddims))...)
         end
     end

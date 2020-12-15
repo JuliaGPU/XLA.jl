@@ -10,7 +10,7 @@ function main(dims=(128,128); T=Int32)
     y = zero(x)
 
     f = x->x*x
-    tt = Tuple{XRTArray{T, dims, length(dims)}}
+    tt = Tuple{HLOArray{T, dims, length(dims)}}
     sig = Base.signature_type(f, tt)
 
     interp = XLA.GPUInterpreter(Base.get_world_counter())
