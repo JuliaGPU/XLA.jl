@@ -6,7 +6,7 @@ function Base.convert(::Type{XLA_Layout}, layout::Layout)
     fields = layout.__protobuf_jl_internal_values
     XLA_Layout(layout.format,
         haskey(fields, :minor_to_major) ? layout.minor_to_major : Int64List(),
-        haskey(fields, :tiles) ? layout.tiles : TileList(),
+        haskey(fields, :tiles) ? XLA_Tile[layout.tiles...] : TileList(),
         haskey(fields, :element_size_in_bits) ? layout.element_size_in_bits : 0,
         haskey(fields, :memory_space) ? layout.memory_space : 0)
 end
@@ -67,8 +67,19 @@ function Base.convert(::Type{XLA_ComputationLayout}, pshape::ProgramShape)
 end
 
 
-# other
+# tile
+
+function Base.convert(::Type{XLA_Tile}, tile::Tile)
+    XLA_Tile(tile.dimensions)
+end
+
+function Base.convert(::Type{Tile}, tile::XLA_Tile)
+    Tile(; dimensions = tile.dimensions)
+end
 
 Base.zero(::Type{XLA_Tile}) = XLA_Tile(Int64List())
+
+
+# other
 
 XLA_ShapedBuffer() = XLA_ShapedBuffer(XLA_Shape(), 0, C_NULL, 0)

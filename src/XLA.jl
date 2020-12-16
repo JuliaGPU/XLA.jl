@@ -16,6 +16,7 @@ module XLA
     const Shape = ShapeProto
     const Layout = LayoutProto
     const ProgramShape = ProgramShapeProto
+    const Tile = TileProto
 
     include("literal.jl")
 

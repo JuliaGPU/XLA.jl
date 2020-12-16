@@ -4,7 +4,7 @@ using ProtoBuf
 using Artifacts
 using CEnum
 
-import ..XLA: Layout, Shape, ProgramShape, XLA
+import ..XLA: XLA, Layout, Shape, ProgramShape, Tile
 
 const libtpu = artifact"libtpu/libtpu.so"
 
