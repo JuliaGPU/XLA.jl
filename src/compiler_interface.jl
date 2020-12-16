@@ -7,7 +7,7 @@ function code_typed_xla(sig::Type; argvals=nothing)
     interp = XLA.GPUInterpreter(Base.get_world_counter())
     matches = Core.Compiler.findall(sig, Core.Compiler.method_table(interp); limit=1)
     @assert Core.Compiler.length(matches) == 1
-    if argvals == nothing
+    if argvals === nothing
         mi = Core.Compiler.specialize_method(Core.Compiler.getindex(matches, 1))
     else
         match = Core.Compiler.getindex(matches, 1)
@@ -24,6 +24,7 @@ function code_typed_xla(sig::Type; argvals=nothing)
     end
     Core.Compiler.typeinf_ext_toplevel(interp, mi)
     ci = ci_cache_lookup(mi, interp.world, interp.world)
+    @assert ci.inferred !== nothing
     ir = Core.Compiler.inflate_ir(ci.inferred, mi)
 
     sv = Compiler.OptimizationState(mi, Core.Compiler.OptimizationParams(interp), interp)
