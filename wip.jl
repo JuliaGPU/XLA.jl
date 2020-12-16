@@ -4,10 +4,15 @@ using XLA
 using .LibTPU
 
 function main(dims=(128,128); T=Int32)
-    # compile
+    # allocate
 
     x = rand(T, dims)
     y = zero(x)
+
+    d_x = TPUArray(x)
+
+
+    # compile
 
     f = x->x.+x
     tt = Tuple{HLOArray{T, dims, length(dims)}}
@@ -23,27 +28,6 @@ function main(dims=(128,128); T=Int32)
     executable = compile!(compiler, hlo_module_group, [[executor()]], allocator)[]
 
 
-    # allocate
-
-    xs = XLA.Shape(T, dims)
-
-    # FIXME: deal with array padding
-    # https://cloud.google.com/tpu/docs/performance-guide#consequences_of_tiling
-    ys = with_status() do status
-        ys = Ref{LibTPU.XLA_Shape}(xs)  # does not work with an #undef ref
-        LibTPU.XlaShapeToTpuPaddedShape(Ref{LibTPU.XLA_Shape}(xs), ys, status)
-        convert(XLA.Shape, ys[])
-    end
-    if ys != xs
-        error("Array shape $xs will get padded on the TPU to $ys")
-    end
-
-    d_x = TPUArray(x)
-
-    size = shape_size(compiler, xs)
-    @assert size == sizeof(d_x)
-
-
     # execute
 
     buffers = [
@@ -53,22 +37,17 @@ function main(dims=(128,128); T=Int32)
 
     inputs = [
         TpuExecutionInput(
-            TpuMaybeOwningDeviceMemoryShapeTree(xs, buffers), [], xs
+            TpuMaybeOwningDeviceMemoryShapeTree(d_x.host_shape, buffers), [], d_x.host_shape
         )
     ]
 
     options = TpuExecutableRunOptions(allocator, default_stream(), nothing; run_id=5)
     output = execute_async!(executable, options, inputs)
-    output_mem = unsafe_load(output.result.bases)
 
 
     # verify
 
-    synchronize()
-
-    # TODO: create arrays from execution output
-    unsafe_copyto!(pointer(y), output_mem, size; executor=executor())
-
+    copyto!(y, output.result; stream=default_stream(), manager=transfer_manager())
     @test y == f(x)
 end
 

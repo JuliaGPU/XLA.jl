@@ -9,12 +9,24 @@ mutable struct TPUArray{T, N} <: AbstractTPUArray{T, N}
     mem::SE_DeviceMemoryBase
     dims::Dims{N}
 
+    host_shape::Shape
+    device_shape::Shape
+
     executor::TpuExecutor
 
     function TPUArray{T, N}(::UndefInitializer, dims::Dims{N};
                             executor=executor()) where {T,N}
-        mem = allocate!(executor, prod(dims) * sizeof(T), 0)
-        arr = new{T,N}(mem, dims, executor)
+        # determine the shape of the data, and the shapes of the buffer
+        # (when on the host and device, respectively)
+        shape = shape = XLA.Shape(T, dims)
+        host_shape = compact_layout(transfer_manager(), shape)
+        device_shape = host_to_device_shape(transfer_manager(), shape)
+
+        # allocate a device buffer
+        compact_size = bytesize_requirement(transfer_manager(), host_shape)
+        mem = allocate!(executor, compact_size, 0)
+
+        arr = new{T,N}(mem, dims, host_shape, device_shape, executor)
         finalizer(unsafe_free!, arr)
     end
 end
@@ -111,26 +123,32 @@ Base.convert(::Type{T}, x::T) where T <: AbstractTPUArray = x
 
 ## interop with CPU arrays
 
-function Base.copyto!(dest::Array{T}, doffs::Integer, src::AbstractTPUArray{T}, soffs::Integer, n::Integer) where T
-    n==0 && return dest
-    @boundscheck checkbounds(dest, doffs)
-    @boundscheck checkbounds(dest, doffs+n-1)
-    @boundscheck checkbounds(src, soffs)
-    @boundscheck checkbounds(src, soffs+n-1)
-    @assert soffs == 1 # For now, until we figure out how to ask for offsets
-    @GC.preserve dest unsafe_copyto!(pointer(dest, doffs), src.mem,
-                                     n*Base.elsize(dest); executor=src.executor)
+# TODO: copy into larger array
+
+function Base.copyto!(dest::Array{T}, src::AbstractTPUArray{T}) where T
+    isempty(src) && return dest
+    @boundscheck size(src) == size(dest) || throw(BoundsError)
+
+    src_bases = [src.mem]
+    GC.@preserve src_bases begin
+        dest_buffer = LibTPU.XLA_ShapedBuffer(src.device_shape, 0, pointer(src_bases), 1)
+        copyto!(dest, src_buffer; stream, manager)
+    end
+
     return dest
 end
 
-function Base.copyto!(dest::AbstractTPUArray{T}, doffs::Integer, src::Array{T}, soffs::Integer, n::Integer) where T
-    n==0 && return dest
-    @boundscheck checkbounds(dest, doffs)
-    @boundscheck checkbounds(dest, doffs+n-1)
-    @boundscheck checkbounds(src, soffs)
-    @boundscheck checkbounds(src, soffs+n-1)
-    @assert doffs == 1 # For now, until we figure out how to ask for offsets
-    @GC.preserve dest unsafe_copyto!(dest.mem, pointer(src, doffs),
-                                     n*Base.elsize(dest); executor=dest.executor)
+function Base.copyto!(dest::AbstractTPUArray{T}, src::Array{T};
+                      stream=default_stream(),
+                      manager=transfer_manager()) where T
+    isempty(src) && return dest
+    @boundscheck size(src) == size(dest) || throw(BoundsError)
+
+    dest_bases = [dest.mem]
+    GC.@preserve dest_bases begin
+        dest_buffer = LibTPU.XLA_ShapedBuffer(dest.device_shape, 0, pointer(dest_bases), 1)
+        copyto!(dest_buffer, src; stream, manager)
+    end
+
     return dest
 end

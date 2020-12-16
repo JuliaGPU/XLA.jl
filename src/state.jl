@@ -1,6 +1,6 @@
 # global state
 
-export platform, executor, default_stream, synchronize
+export platform, executor, default_stream, synchronize, transfer_manager
 
 function platform()
     get!(task_local_storage(), :TpuPlatform) do
@@ -26,4 +26,11 @@ end
 
 function synchronize(exec::TpuExecutor=executor())
     LibTPU.TpuExecutor_SynchronizeAllActivity(exec)
+end
+
+function transfer_manager()
+    get!(task_local_storage(), :TpuTransferManager) do
+        p = TpuTransferManager()
+        p
+    end
 end
