@@ -4,14 +4,6 @@ using XLA
 using .LibTPU
 
 function main(dims=(128,128); T=Int32)
-    # allocate
-
-    x = rand(T, dims)
-    y = zero(x)
-
-    d_x = TPUArray(x)
-
-
     # compile
 
     f = x->x.+x
@@ -26,6 +18,14 @@ function main(dims=(128,128); T=Int32)
     compiler = TpuCompiler()
     allocator = TpuDeviceMemoryAllocator(platform(), executor())
     executable = compile!(compiler, hlo_module_group, [[executor()]], allocator)[]
+
+
+    # allocate
+
+    x = rand(T, dims)
+    y = zero(x)
+
+    d_x = TPUArray(x)
 
 
     # execute
