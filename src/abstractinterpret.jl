@@ -100,8 +100,14 @@ struct GPUInterpreter <: AbstractInterpreter
             world,
 
             # parameters for inference and optimization
-            InferenceParams(unoptimize_throw_blocks=false, aggressive_constant_propagation=true),
-            OptimizationParams(unoptimize_throw_blocks=false),
+            InferenceParams(
+                unoptimize_throw_blocks=false,
+                aggressive_constant_propagation=true,
+                tupletype_depth=10,
+                tuple_splat=1000),
+            OptimizationParams(
+                unoptimize_throw_blocks=false,
+                ignore_all_inlining_heuristics=true),
         )
     end
 end
