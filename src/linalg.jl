@@ -400,6 +400,7 @@ function NNlib.∇meanpool(dy::HLOArray, y::HLOArray, x::HLOArray, k; pad = map(
         make_pooling_windows(x, k, pad, map(_->1, k))
     )(+, pdy, HLOArray(zero(eltype(x))))
 end
+=#
 
 @Base.pure dims_tuple(n) = tuple((0:n-1)...)
 @Base.pure rev_dims_tuple(n) = tuple((n-1:-1:0)...)
@@ -438,6 +439,7 @@ function Base.mapreduce(f, op, A::HLOArray; dims=:)
     return res
 end
 
+#=
 using Flux
 
 function Flux.rand_similar(x::HLOArray{T, Shape}) where {T, Shape}
@@ -445,6 +447,7 @@ function Flux.rand_similar(x::HLOArray{T, Shape}) where {T, Shape}
         HLOArray(zero(T)),
         HLOArray(one(T)))
 end
+=#
 
 using LinearAlgebra
 # TODO: Base scales by maxabs if necessary. Do we need that?
@@ -564,11 +567,13 @@ function Base.getindex(A::HLOArray{<:Any, <:Any, N}, rs::Vararg{Union{UnitRange{
     HloSlice(slices_tuple(rs, size(typeof(A))))(A)
 end
 
+#=
 using DiffRules
 DiffRules.select(p::HLOArray{Bool, (), 0}, x::HLOArray{T, (), 0}, y::HLOArray{T, (), 0}) where {T} =
     GenericHloOp{:select}(T, ())(p, x, y)
 DiffRules.select(p::Bool, x::HLOArray{T, (), 0}, y::HLOArray{T, (), 0}) where {T} =
     GenericHloOp{:select}(T, ())(HLOArray{Bool, (), 0}(p), x, y)
+=#
 
 function HLOArray(a::UnitRange{T}) where {T}
     HloIota(T, (length(a),), 0)() .+ first(a)
@@ -622,6 +627,7 @@ Base.hcat(a::HLOArray...) = _cat(2, a...)
 Base.vcat(a::HLOArray...) = _cat(1, a...)
 Base.cat(a::HLOArray...; dims) = _cat(dims, a...)
 
+#=
 using Statistics
 @Base.pure @noinline count_summands(T::Type{<:HLOArray}, dims) = prod(size(T)[[dims...]])
 @Base.pure @noinline count_summands(T::Type{<:HLOArray}, dims::Colon) = prod(size(T))
@@ -632,6 +638,7 @@ function Statistics.mean(A::HLOArray; dims=:)
     nsummands = HLOArray(x)
     summed ./ nsummands
 end
+=#
 
 Base.@pure @noinline function compute_dropdims_d(A, dims)
     for i in 1:length(dims)
@@ -665,4 +672,4 @@ function Base.repeat(A::HLOArray, dims::Integer...)
     dims_mapping, result_szs, final_sz = make_repeat_dims(size(A), dims)
     XLA.HloReshape(final_sz)(XLA.HloBroadcast(dims_mapping, result_szs)(A))
 end
-=#
+
