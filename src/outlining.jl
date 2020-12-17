@@ -12,44 +12,113 @@ end
 Base.show(io::IO, hloif::_HloIf) = print(io, "_HloIf(<omitted>)")
 Base.show(io::IO, hloif::_HloWhile) = print(io, "_HloWhile(<omitted>)")
 
-function outline_if_bb(ir, bb_to_outline, types, used_from_outside, merge_phi)
-    block = ir.cfg.blocks[bb_to_outline]
-    block = ir.cfg.blocks[bb_to_outline]
-    outlined_ir = IRCode(Any[], Any[], Int32[], UInt8[], Compiler.CFG(BasicBlock[
-        BasicBlock(Compiler.StmtRange(1, 0))
-    ], Int64[]), LineInfoNode[], Any[], Any[], Core.svec())
-    for i in 1:length(used_from_outside)
-        Compiler.append_node!(outlined_ir, types[i], Expr(:call, Core.getfield, Compiler.Argument(2), i), 0)
+function erase_block!(ir, bbidx)
+    block = ir.cfg.blocks[bbidx]
+    ir.stmts.inst[block.stmts[1:end-1]] .= nothing
+    ir.stmts.inst[block.stmts[end]] = ReturnNode()
+    empty!(ir.cfg.blocks[bbidx].preds)
+    empty!(ir.cfg.blocks[bbidx].succs)
+end
+
+# XXX
+Base.iterate(iter::Compiler.UseRefIterator, args...) = Core.Compiler.iterate(iter, args...)
+Base.getindex(iter::Compiler.UseRefIterator) = Core.Compiler.getindex(iter)
+Base.getindex(iter::Compiler.UseRef) = Core.Compiler.getindex(iter)
+Base.setindex!(iter::Compiler.UseRef, val) = Core.Compiler.setindex!(iter, val)
+Base.setindex!(inst::Core.Compiler.Instruction, args...) = Core.Compiler.setindex!(inst, args...)
+
+# outline a group of bbs that are guaranteed to join up again
+# into a separate function.
+function outline_if_bb(ir, bbs_to_outline, types, used_from_outside, join_block, merge_phi)
+    value_map = Dict{Union{SSAValue,Compiler.Argument},SSAValue}()
+    label_map = Dict{Int,Int}()
+    stmts = Compiler.InstructionStream()
+
+    # second argument is a tuple with values used from outside
+    for (i, val) in enumerate(used_from_outside)
+        stmt = Compiler.Instruction(stmts)
+        stmt[:inst] = Expr(:call, Core.getfield, Compiler.Argument(2), i)
+        stmt[:type] = types[i]
+        value_map[val] = SSAValue(stmt.idx)
     end
-    for idx in block.stmts
-        stmt = ir.stmts[idx]
-        isa(stmt, GotoNode) && continue
-        stmt′ = isa(stmt, Expr) ? copy(stmt) : stmt
-        urs = userefs(stmt′)
-        for op in urs
-            val = op[]
-            if isa(val, SSAValue)
-                if val.id in block.stmts
-                    op[] = SSAValue(val.id - first(block.stmts) + length(used_from_outside) + 1)
-                else
-                    op[] = SSAValue(findfirst(==(val), used_from_outside))
+
+    # outline each block, mapping values as we go
+    for bb_to_outline in bbs_to_outline
+        # this block will now start at the next instruction
+        label_map[bb_to_outline] = length(stmts)+1
+
+        block = ir.cfg.blocks[bb_to_outline]
+        for idx in block.stmts
+            stmt = ir.stmts[idx]
+            if isa(stmt[:inst], GotoNode) && stmt[:inst].label == join_block
+                # ignore jumps to the join block; we'll emit a return instead
+                continue
+            end
+
+            new_stmt = Compiler.Instruction(stmts)
+            new_stmt[] = stmt
+            if isa(new_stmt[:inst], Expr)
+                new_stmt[:inst] = copy(new_stmt[:inst])
+            end
+
+            # translate uses (values)
+            urs = userefs(new_stmt[:inst])
+            for op in urs
+                val = op[]
+                if isa(val, SSAValue) || isa(val, Compiler.Argument)
+                    op[] = value_map[val]
                 end
-            elseif isa(val, Compiler.Argument)
-                op[] = SSAValue(findfirst(==(val), used_from_outside))
+            end
+            value_map[SSAValue(idx)] = SSAValue(new_stmt.idx)
+        end
+
+        # if this block joins, return a value
+        if join_block in block.succs
+            # can't have a conditional branch into the join
+            @assert length(block.succs) == 1
+
+            if merge_phi !== nothing
+                edge_idx = only(findall(==(bb_to_outline), merge_phi.edges))
+                retval_val = merge_phi.values[edge_idx]::SSAValue
+                stmt = Compiler.Instruction(stmts)
+                stmt[:inst] = ReturnNode(value_map[retval_val])
+                stmt[:type] = ir.stmts[retval_val.id][:type]
+            else
+                stmt = Compiler.Instruction(stmts)
+                stmt[:inst] = ReturnNode(nothing)
+                stmt[:type] = Nothing
             end
         end
-        stmt′ = urs[]
-        Compiler.append_node!(outlined_ir, ir.types[idx], stmt′, 0)
     end
-    edge_idx = findfirst(==(bb_to_outline), merge_phi.edges)
-    retval_val = (merge_phi.values[edge_idx]::SSAValue)
-    val_id = retval_val.id
-    retval_outside = findfirst(==(retval_val), used_from_outside)
-    retval_val = retval_outside === nothing ?
-        SSAValue(val_id - first(block.stmts) + length(used_from_outside) + 1) :
-        SSAValue(retval_outside)
-    Compiler.append_node!(outlined_ir, ir.types[val_id], ReturnNode(retval_val), 0)
-    return outlined_ir
+
+    # another pass to fix up labels
+    for stmt in stmts
+        if isa(stmt[:inst], GotoNode)
+            stmt[:inst] = GotoNode(label_map[stmt[:inst].label])
+        end
+    end
+
+    # partition in basic blocks
+    cfg = Compiler.compute_basic_blocks(stmts.inst)
+
+    # Translate statement edges to bb_edges
+    # TODO: duplicated from Base's inflate_ir; make that reusable instead
+    for (i,stmt) in enumerate(stmts.inst)
+        stmts.inst[i] = if isa(stmt, GotoNode)
+            GotoNode(Compiler.block_for_inst(cfg, stmt.label))
+        elseif isa(stmt, GotoIfNot)
+            GotoIfNot(stmt.cond, Compiler.block_for_inst(cfg, stmt.dest))
+        elseif isa(stmt, PhiNode)
+            PhiNode(Int32[Compiler.block_for_inst(cfg, Int(edge)) for edge in stmt.edges], stmt.values)
+        elseif isa(stmt, Expr) && stmt.head === :enter
+            stmt.args[1] = Compiler.block_for_inst(cfg, stmt.args[1])
+            stmt
+        else
+            stmt
+        end
+    end
+
+    return IRCode(stmts, cfg, ir.linetable, Any[], Any[], Any[])
 end
 
 function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used_from_outside, is_header=false)
@@ -59,7 +128,7 @@ function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used
     ], Int64[]), LineInfoNode[], Any[], Any[], Core.svec())
     ncarried_vals = length(phi_nodes)+length(used_from_outside)
     for i in 1:ncarried_vals
-        Compiler.append_node!(outlined_ir, types[i], Expr(:call, Core.getfield, Compiler.Argument(2), i), 0)
+        append_node!(outlined_ir, types[i], Expr(:call, Core.getfield, Compiler.Argument(2), i), 0)
     end
     bb_starts = Int[ncarried_vals+1]
     for bb_to_outline in bbs_to_outline
@@ -100,7 +169,7 @@ function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used
                 end
             end
             stmt′ = urs[]
-            Compiler.append_node!(outlined_ir, ir.types[idx], stmt′, 0)
+            append_node!(outlined_ir, ir.types[idx], stmt′, 0)
         end
         push!(bb_starts, length(outlined_ir.stmts) + 1)
     end
@@ -145,17 +214,9 @@ function outline_loop_body(ir, domtree, bbs_to_outline, types, phi_nodes, used_f
         push!(args, SSAValue(length(phi_nodes) + i))
     end
     tuple_type = Compiler.tuple_tfunc(types)
-    Compiler.append_node!(outlined_ir, tuple_type, Expr(:call, Core.tuple, args...), 0)
-    Compiler.append_node!(outlined_ir, tuple_type, ReturnNode(SSAValue(length(outlined_ir.stmts))), 0)
+    append_node!(outlined_ir, tuple_type, Expr(:call, Core.tuple, args...), 0)
+    append_node!(outlined_ir, tuple_type, ReturnNode(SSAValue(length(outlined_ir.stmts))), 0)
     return outlined_ir
-end
-
-function erase_block!(ir, bbidx)
-    block = ir.cfg.blocks[bbidx]
-    ir.stmts[block.stmts[1:end-1]] .= nothing
-    ir.stmts[block.stmts[end]] = ReturnNode()
-    empty!(ir.cfg.blocks[bbidx].preds)
-    empty!(ir.cfg.blocks[bbidx].succs)
 end
 
 function NCA(domtree, nodes)
@@ -188,8 +249,8 @@ entry(l::OutlineLoop) = l.header
 entry(l::OutlineIf) = l.head
 
 # Traverse the domtree and find all outlining regions
-# TODO: There's much better ways to do this. For now
-# I just want to get it to work at all
+# TODO: There's much better ways to do this. For now I just want to get it to work at all.
+# TODO: this doesn't catch conditionals where the arms return instead of join together.
 function analyze_regions(domtree, cfg)
     bbs = cfg.blocks
     todo = Any[]
@@ -323,11 +384,11 @@ function outline_loop!(ir, sv, domtree, loop_header)
     ssa_order = Any[]
     for (val, _) in phi_nodes
         push!(ssa_order, val)
-        push!(types, argextype(val, ir, sv.sp))
+        push!(types, argextype(val, ir, sv.sptypes))
     end
     for val in used_from_outside
         push!(ssa_order, val)
-        push!(types, argextype(val, ir, sv.sp))
+        push!(types, argextype(val, ir, sv.sptypes))
     end
     # We put these in a tuple in the order (phi_nodes..., used_from_outside...)
     # Replace Phi nodes by getfield calls
@@ -404,89 +465,115 @@ function outline_loop!(ir, sv, domtree, loop_header)
     ir
 end
 
-
-function outline_if!(ir, sv, domtree, split_block, join)
-    # Simple version for experiments: Assume each branch of the if has
-    # exactly one basic block
+function outline_if!(ir, sv, domtree, split_block, join_block)
     @assert isa(ir.stmts[ir.cfg.blocks[split_block].stmts[end]][:inst], GotoIfNot)
-    divergence_blocks = copy(ir.cfg.blocks[split_block].succs)
-    @assert length(divergence_blocks) == 2
-    # For our simple experiments only allow a single block
-    @assert length(ir.cfg.blocks[divergence_blocks[1]].succs) == 1
-    join_block = ir.cfg.blocks[divergence_blocks[1]].succs[1]
-    @assert all(divergence_blocks) do block
-        preds = ir.cfg.blocks[block].preds
-        succs = ir.cfg.blocks[block].succs
-        length(preds) == 1 && length(succs) == 1 && succs[1] == join_block
-    end
-    phi_node = ir.stmts[ir.cfg.blocks[join_block].stmts[1]][:inst]
 
-    all_used_from_outside = Vector{Any}[]
-    for bb in divergence_blocks
-        # TODO: Allow each branch to have multiple BBS
-        used_from_outside = Vector{Any}()
-        stmt_range = ir.cfg.blocks[bb].stmts
+    # find the blocks in each arm of the branch
+    @assert length(ir.cfg.blocks[split_block].succs) == 2
+    divergence_blocks = [[] for _ in 1:2] # TODO: set?
+    for arm in 1:2
+        bb_worklist = [ir.cfg.blocks[split_block].succs[arm]]
+        while !isempty(bb_worklist)
+            bb = pop!(bb_worklist)
+            if !(bb == join_block || bb in divergence_blocks[arm])
+                push!(divergence_blocks[arm], bb)
+                append!(bb_worklist, ir.cfg.blocks[bb].succs)
+            end
+        end
+    end
+
+    phi_node = ir.stmts[ir.cfg.blocks[join_block].stmts[1]][:inst]
+    if !isa(phi_node, PhiNode)
+        # one of the blocks might throw
+        phi_node = nothing
+    end
+
+    # find the SSA values from outside the branch that are used in each arm
+    used_from_outside = [[] for _ in 1:2]
+    for (arm, bbs) in enumerate(divergence_blocks)
+        # determine if a value is local to the arm, or comes from outside
+        stmt_ranges = [ir.cfg.blocks[bb].stmts for bb in bbs]
         function process_val(val)
             if isa(val, SSAValue)
-                # If it's in our current basic block, we don't care
-                val.id in stmt_range && return
+                # If it's in any block of this arm, we don't care
+                any(stmt_range->in(val.id, stmt_range), stmt_ranges) && return
             elseif !isa(val, Compiler.Argument)
                 return
             end
-            push!(used_from_outside, val)
+            push!(used_from_outside[arm], val)
         end
-        for stmt_idx in stmt_range
-            stmt = ir.stmts[stmt_idx]
-            urs = userefs(stmt)
-            for op in urs
-                val = op[]
-                process_val(val)
+
+        # check each value of every statement
+        for bb in bbs
+            stmt_range = ir.cfg.blocks[bb].stmts
+            for stmt_idx in stmt_range
+                stmt = ir.stmts[stmt_idx]
+                urs = userefs(stmt[:inst])
+                for op in urs
+                    val = op[]
+                    process_val(val)
+                end
             end
         end
-        process_val(phi_node.values[findfirst(==(bb), phi_node.edges)])
-        unique!(used_from_outside)
-        push!(all_used_from_outside, used_from_outside)
+
+        # check the value that this arm needs to return
+        if phi_node !== nothing
+            process_val(phi_node.values[findfirst(in(bbs), phi_node.edges)])
+        end
+
+        unique!(used_from_outside[arm])
     end
-    if_types = Any[argextype(arg, ir, sv.sp) for arg in all_used_from_outside[1]]
+
+    # create separate functions containing the then and else arms
+    if_types = Any[argextype(arg, ir, sv.sptypes) for arg in used_from_outside[1]]
     if_tuple_T = Compiler.tuple_tfunc(if_types)
-    if_func = outline_if_bb(ir, divergence_blocks[1], if_types, all_used_from_outside[1], phi_node)
-    else_types = Any[argextype(arg, ir, sv.sp) for arg in all_used_from_outside[2]]
+    if_func = outline_if_bb(ir, divergence_blocks[1], if_types, used_from_outside[1], join_block, phi_node)
+    else_types = Any[argextype(arg, ir, sv.sptypes) for arg in used_from_outside[2]]
     else_tuple_T = Compiler.tuple_tfunc(else_types)
-    else_func = outline_if_bb(ir, divergence_blocks[2], else_types, all_used_from_outside[2], phi_node)
+    else_func = outline_if_bb(ir, divergence_blocks[2], else_types, used_from_outside[2], join_block, phi_node)
     append!(if_func.argtypes, [nothing, if_tuple_T])
     append!(else_func.argtypes, [nothing, else_tuple_T])
     Compiler.verify_ir(if_func)
     Compiler.verify_ir(else_func)
+
+    # find the conditional jump and the condition that drives it
+    cond_jump = ir.stmts[ir.cfg.blocks[split_block].stmts[end]]
+    @assert isa(cond_jump[:inst], GotoIfNot)
+    @assert isa(cond_jump[:inst].cond, SSAValue)
+    condition = ir.stmts[cond_jump[:inst].cond.id]
+    # TODO: do we need to look through the conversion to Bool
+    #       to get the underling HloScalar{Bool}?
+    @assert condition[:type] == Bool
+    # replace by a direct jump to the join block
+    cond_jump[:inst] = GotoNode(join_block)
+
+    # insert a call to HloIf
     inst = _HloIf(if_func, else_func)
-    condition = ir.stmts[ir.cfg.blocks[split_block].stmts[end]]
-    @assert isa(condition, GotoIfNot)
-    # Replace condition by direct branch to join block
-    ir.stmts[ir.cfg.blocks[split_block].stmts[end]] = GotoNode(join_block)
-    # Replace phi node by HloIf
-    ## Look through the conversion to bool
-    @assert isa(condition.cond, SSAValue)
-    cond_stmt = ir.stmts[condition.cond.id]
-    @assert isexpr(cond_stmt, :invoke)
-    cond = cond_stmt.args[4]
-    #
     insert_pos = ir.cfg.blocks[join_block].stmts[1]
-    if_tuple = insert_node!(ir, insert_pos, if_tuple_T, Expr(:call, Core.tuple, all_used_from_outside[1]...))
-    else_tuple = insert_node!(ir, insert_pos, else_tuple_T, Expr(:call, Core.tuple, all_used_from_outside[2]...))
-    ir.stmts[insert_pos] = Expr(:call, inst, cond, if_tuple, else_tuple)
-    # Delete divergence blocks
-    erase_block!.((ir,), divergence_blocks)
-    # Fix CFG
+    if_tuple = insert_node!(ir, insert_pos, if_tuple_T, Expr(:call, Core.tuple, used_from_outside[1]...))
+    else_tuple = insert_node!(ir, insert_pos, else_tuple_T, Expr(:call, Core.tuple, used_from_outside[2]...))
+    ir.stmts[insert_pos][:inst] = Expr(:call, inst, SSAValue(condition.idx), if_tuple, else_tuple)
+
+    # delete the old divergence blocks
+    for (arm, bbs) in enumerate(divergence_blocks)
+        erase_block!.((ir,), bbs)
+        for bbidx in bbs
+            block = ir.cfg.blocks[bbidx]
+            empty!(block.preds); empty!(block.succs)
+        end
+    end
+
+    # fix the CFG
     let cb_succs = ir.cfg.blocks[split_block].succs, jb_preds = ir.cfg.blocks[join_block].preds
         empty!(cb_succs); empty!(jb_preds);
         push!(cb_succs, join_block); push!(jb_preds, split_block)
     end
-    for bbidx in divergence_blocks
-        block = ir.cfg.blocks[bbidx]
-        empty!(block.preds); empty!(block.succs)
-    end
+
+    # finish up
     ir = Compiler.compact!(ir)
     Compiler.verify_ir(ir)
-    ir
+
+    return ir
 end
 
 function outline_control_flow!(ir, sv)

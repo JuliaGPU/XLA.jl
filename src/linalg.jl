@@ -148,11 +148,11 @@ Base.sqrt(A::HLOArray{T, (), 0}) where {T} = GenericHloOp{:power}(T, ())(A, HLOA
 @eval Base.isless(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
     convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than")))}(Bool, ())(A, B))
 @eval Base.:(<=)(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
-    GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B)
+    convert(Bool, GenericHloOp{$(QuoteNode(Symbol("less-than-or-equal-to")))}(Bool, ())(A, B))
 @eval Base.:(==)(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
-    GenericHloOp{$(QuoteNode(Symbol("equal-to")))}(Bool, ())(A, B)
+    convert(Bool, GenericHloOp{$(QuoteNode(Symbol("equal-to")))}(Bool, ())(A, B))
 @eval Base.:(!=)(A::HLOArray{<:Any, (), 0}, B::HLOArray{<:Any, (), 0}) =
-    GenericHloOp{$(QuoteNode(Symbol("not-equal-to")))}(Bool, ())(A, B)
+    convert(Bool, GenericHloOp{$(QuoteNode(Symbol("not-equal-to")))}(Bool, ())(A, B))
 Base.inv(x::HLOScalar{T}) where {T} = HLOArray(one(T))/x
 
 Base.:-(x::HLOScalar{T}) where {T} = -(HLOArray(zero(T)), x)
