@@ -6,7 +6,7 @@ function agressive_new_tfunc(stmt, t, ir, sv)
     isconst = true
     args = Vector{Any}(undef, length(stmt.args) - 1)
     for i = 2:length(stmt.args)
-        at = Compiler.argextype(stmt.args[i], ir, sv.sp)
+        at = Compiler.argextype(stmt.args[i], ir, sv.sptypes)
         if at === Bottom
             t = Bottom
             isconst = false
@@ -37,7 +37,7 @@ function refine_types!(ir, sv)
             continue
         end
         (isexpr(stmt, :call) || isexpr(stmt, :new)) || continue
-        arg1t = Compiler.argextype(stmt.args[1], ir, sv.sp)
+        arg1t = Compiler.argextype(stmt.args[1], ir, sv.sptypes)
         # This is a more agressive version of the tfunc inference we do for :new
         if isexpr(stmt, :new)
             if !isa(arg1t, Const) || arg1t.val.mutable
@@ -53,7 +53,7 @@ function refine_types!(ir, sv)
         f = Compiler.singleton_type(arg1t)
         f === nothing && continue
         if isa(f, Core.Builtin)
-            argtypes = Any[Compiler.argextype(stmt.args[i], ir, sv.sp) for i in 2:length(stmt.args)]
+            argtypes = Any[Compiler.argextype(stmt.args[i], ir, sv.sptypes) for i in 2:length(stmt.args)]
             rt = Compiler.builtin_tfunction(f, argtypes, nothing, sv.params)
             ir.types[i] = rt
         end

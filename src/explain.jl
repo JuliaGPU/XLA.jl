@@ -30,10 +30,10 @@ function analyze_unreachable(io::IO, ir, sv)
         return
     end
     # See if this is a method error
-    f = argextype(before.args[1], ir, sv.sp)
+    f = argextype(before.args[1], ir, sv.sptypes)
     isa(f, Const) || return println(io, "Expected function to be a constant")
     f = f.val
-    args = Tuple{[widenconst(argextype(before.args[i], ir, sv.sp)) for i = 2:length(before.args)]...}
+    args = Tuple{[widenconst(argextype(before.args[i], ir, sv.sptypes)) for i = 2:length(before.args)]...}
     args = Base.to_tuple_type(args)
     tt = Base.signature_type(f, args)
     m = ccall(:jl_gf_invoke_lookup, Any, (Any, UInt), tt, sv.params.world)
@@ -76,7 +76,7 @@ function explain_suboptimal_inference(sig, bt=Base.StackFrame[])
                 append!(bt, synthesize_bt_for_line(ir, idx))
                 atys = Any[]
                 for i = 1:length(stmt.args)
-                    ty = widenconst(argextype(stmt.args[i], ir, sv.sp, slottypes))
+                    ty = widenconst(argextype(stmt.args[i], ir, sv.sptypes, slottypes))
                     if ty === Any
                         if isa(stmt.args[i], GlobalRef)
                             printstyled("Global variable ($(stmt.args[i])) was referenced.", color=:bold)

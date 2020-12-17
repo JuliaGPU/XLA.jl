@@ -245,7 +245,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
             elseif isa(hlo_inst, _HloIf)
                 @assert isexpr(stmt, :call)
                 args = map(hlo_eval, stmt.args[2:end])
-                if_type = ir.types[stmt_idx]
+                if_type = ir.stmts[stmt_idx][:type]
                 proto = HloInstructionProto(comp,
                     GenericHloOp{:conditional}(if_type.parameters[1], if_type.parameters[2]), args...)
                 proto.called_computation_ids = Int64[]
@@ -268,7 +268,7 @@ function _compile_to_xla!(computations, comp, ir, sv)
                 end
             elseif isa(hlo_inst, _HloWhile)
                 initial = hlo_eval(stmt.args[2])
-                while_type = ir.types[stmt_idx]
+                while_type = ir.stmts[stmt_idx][:type]
                 tuple_T = hlo_inst.condition_func.argtypes[2]
                 shape = dtype_to_shape(tuple_T)
                 proto = HloInstructionProto(comp,
