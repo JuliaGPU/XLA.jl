@@ -124,9 +124,11 @@ function _compile_to_xla!(computations, comp, ir, sv)
         if isexpr(stmt, :new) || (isexpr(stmt, :call) && is_known_call(stmt, tuple, ir, ir.sptypes))
             # Handle non-inlined constructors for HLo operations
             nT = argextype(stmt.args[1], ir, ir.sptypes)
-            if (isa(nT, Type) && nT.parameters[1] <: HloOp) || (isa(nT, Const) && nT.val <: HloOp)
+            if (isa(nT, Type) && nT.parameters[1] <: HloOp) ||
+               (isa(nT, Const) && isa(nT.val, HloOp))
                 continue
             end
+
             args = Any[]
             for arg in stmt.args[2:end]
                 ty = argextype(arg, ir, ir.sptypes)
