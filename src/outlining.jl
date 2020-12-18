@@ -91,7 +91,7 @@ function outline_if_bb(ir, bbs_to_outline, types, used_from_outside, join_block,
         end
     end
 
-    # another pass to fix up labels
+    # patch labels
     for stmt in stmts
         if isa(stmt[:inst], GotoNode)
             stmt[:inst] = GotoNode(label_map[stmt[:inst].label])
@@ -122,22 +122,34 @@ function outline_if_bb(ir, bbs_to_outline, types, used_from_outside, join_block,
 end
 
 function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used_from_outside, is_header=false)
+    label_map = Dict{Int,Int}()
+    stmts = Compiler.InstructionStream()
+
     bbs = ir.cfg.blocks
-    outlined_ir = IRCode(Any[], Any[], Int32[], UInt8[], Compiler.CFG(BasicBlock[
-        BasicBlock(Compiler.StmtRange(1, 0))
-    ], Int64[]), LineInfoNode[], Any[], Any[], Core.svec())
     ncarried_vals = length(phi_nodes)+length(used_from_outside)
     for i in 1:ncarried_vals
-        append_node!(outlined_ir, types[i], Expr(:call, Core.getfield, Compiler.Argument(2), i), 0)
+        stmt = Compiler.Instruction(stmts)
+        stmt[:type] = types[i]
+        stmt[:inst] = Expr(:call, Core.getfield, Compiler.Argument(2), i)
     end
+
     bb_starts = Int[ncarried_vals+1]
     for bb_to_outline in bbs_to_outline
+        # this block will now start at the next instruction
+        label_map[bb_to_outline] = length(stmts)+1
+
         block = bbs[bb_to_outline]
         for idx in block.stmts
-            stmt = ir.stmts[idx]
+            stmt = ir.stmts[idx][:inst]
             isa(stmt, GotoNode) && continue
             if isa(stmt, GotoIfNot)
+                # we can only encounter a conditional branch in the loop header.
+                # replace it by a return of the condition (FIXME: this is a leaky abstraction).
                 @assert is_header && bb_to_outline == bbs_to_outline[end] && idx == block.stmts[end]
+                branch = Compiler.Instruction(stmts)
+                branch[:inst] = ReturnNode(stmt.cond)
+                branch[:type] = Bool
+                continue
             end
             if isa(stmt, PhiNode)
                 continue
@@ -149,7 +161,7 @@ function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used
                 if isa(val, SSAValue)
                     val_bb = block_for_inst(ir.cfg, val.id)
                     bb_idx = findfirst(==(val_bb), bbs_to_outline)
-                    if bb_idx !== nothing && !isa(ir.stmts[val.id], PhiNode)
+                    if bb_idx !== nothing && !isa(ir.stmts[val.id][:inst], PhiNode)
                         def_block = bbs[val_bb]
                         block_local_id = val.id - first(def_block.stmts)
                         if bb_idx == 1 && is_header
@@ -169,27 +181,60 @@ function outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used
                 end
             end
             stmt′ = urs[]
-            append_node!(outlined_ir, ir.types[idx], stmt′, 0)
+
+            new_stmt = Compiler.Instruction(stmts)
+            new_stmt[:type] = ir.stmts[idx][:type]
+            new_stmt[:inst] = stmt′
         end
-        push!(bb_starts, length(outlined_ir.stmts) + 1)
+        push!(bb_starts, length(stmts) + 1)
     end
+
+    # patch labels
+    for stmt in stmts
+        if isa(stmt[:inst], GotoNode)
+            stmt[:inst] = GotoNode(label_map[stmt[:inst].label])
+        elseif isa(stmt[:inst], GotoIfNot)
+            stmt[:inst] = GotoIfNot(stmt[:inst].cond, label_map[stmt[:inst].dest])
+        end
+    end
+
+    # partition in basic blocks
+    cfg = Compiler.compute_basic_blocks(stmts.inst)
+
+    # Translate statement edges to bb_edges
+    # TODO: duplicated from Base's inflate_ir; make that reusable instead
+    for (i,stmt) in enumerate(stmts.inst)
+        stmts.inst[i] = if isa(stmt, GotoNode)
+            GotoNode(Compiler.block_for_inst(cfg, stmt.label))
+        elseif isa(stmt, GotoIfNot)
+            GotoIfNot(stmt.cond, Compiler.block_for_inst(cfg, stmt.dest))
+        elseif isa(stmt, PhiNode)
+            PhiNode(Int32[Compiler.block_for_inst(cfg, Int(edge)) for edge in stmt.edges], stmt.values)
+        elseif isa(stmt, Expr) && stmt.head === :enter
+            stmt.args[1] = Compiler.block_for_inst(cfg, stmt.args[1])
+            stmt
+        else
+            stmt
+        end
+    end
+
+    outlined_ir = IRCode(stmts, cfg, ir.linetable, Any[], Any[], Any[])
     return (bb_starts, outlined_ir)
 end
 
 function outline_loop_header(ir, domtree, bb_to_outline, types, phi_nodes, used_from_outside)
     _, outlined_ir = outline_loop_blocks(ir, domtree, [bb_to_outline], types, phi_nodes, used_from_outside, true)
-    branch = outlined_ir.stmts[end]
-    outlined_ir.stmts[end] = ReturnNode(branch.cond)
-    outlined_ir.types[end] = Bool
     return outlined_ir
 end
 
 function outline_loop_body(ir, domtree, bbs_to_outline, types, phi_nodes, used_from_outside)
     bbs = ir.cfg.blocks
     ncarried_vals = length(phi_nodes)+length(used_from_outside)
+
     # This is significant overkill, but I don't care for now. If all you have is a hammer...
     bbs_to_outline = sort(bbs_to_outline, lt=(a, b)->dominates(domtree, a, b))
     bb_starts, outlined_ir = outline_loop_blocks(ir, domtree, bbs_to_outline, types, phi_nodes, used_from_outside)
+
     # Reconstruct the loop carried tuple
     args = Any[]
     for (_, phi) in phi_nodes
@@ -214,9 +259,19 @@ function outline_loop_body(ir, domtree, bbs_to_outline, types, phi_nodes, used_f
         push!(args, SSAValue(length(phi_nodes) + i))
     end
     tuple_type = Compiler.tuple_tfunc(types)
-    append_node!(outlined_ir, tuple_type, Expr(:call, Core.tuple, args...), 0)
-    append_node!(outlined_ir, tuple_type, ReturnNode(SSAValue(length(outlined_ir.stmts))), 0)
-    return outlined_ir
+
+    tuple_stmt = Compiler.Instruction(outlined_ir.stmts)
+    tuple_stmt[:inst] = Expr(:call, Core.tuple, args...)
+    tuple_stmt[:type] = tuple_type
+
+    return_stmt = Compiler.Instruction(outlined_ir.stmts)
+    return_stmt[:inst] = ReturnNode(SSAValue(tuple_stmt.idx))
+    return_stmt[:type] = tuple_type
+
+    # re-compute the CFG
+    # TODO: don't eagerly construct it in `outline_loop_blocks`?
+    cfg = Compiler.compute_basic_blocks(outlined_ir.stmts.inst)
+    return IRCode(outlined_ir.stmts, cfg, outlined_ir.linetable, Any[], Any[], Any[])
 end
 
 function NCA(domtree, nodes)
@@ -281,12 +336,14 @@ function analyze_regions(domtree, cfg)
 end
 
 function outline_loop!(ir, sv, domtree, loop_header)
+    println("outlining loop starting at $loop_header")
     bbs = ir.cfg.blocks
+
     loop_header_bb = ir.cfg.blocks[loop_header]
     loop_header_preds = loop_header_bb.preds
     @assert length(loop_header_preds) == 2
 
-    # Map the loop
+    # map the edges into the header (the entry and latch)
     if dominates(domtree, loop_header, loop_header_preds[1])
         loop_latch = loop_header_preds[1]
         entry_block = loop_header_preds[2]
@@ -294,7 +351,10 @@ function outline_loop!(ir, sv, domtree, loop_header)
         loop_latch = loop_header_preds[2]
         entry_block = loop_header_preds[1]
     end
+    @show loop_latch entry_block
     @assert dominates(domtree, loop_header, loop_latch)
+
+    # map the body
     loop_body_blocks = Int[loop_latch]
     worklist = Int[loop_latch]
     while !isempty(worklist)
@@ -306,8 +366,10 @@ function outline_loop!(ir, sv, domtree, loop_header)
             end
         end
     end
+    @show loop_body_blocks
 
-    loop_cond = ir.stmts[loop_header_bb.stmts[end]]
+    # find the loop condition, which falls through/jumps to the body and the exit
+    loop_cond = ir.stmts[loop_header_bb.stmts[end]][:inst]
     @assert isa(loop_cond, GotoIfNot)
     (bb1, bb2) = (loop_header + 1, loop_cond.dest)
     if dominates(domtree, bb2, loop_latch)
@@ -315,21 +377,29 @@ function outline_loop!(ir, sv, domtree, loop_header)
     else
         exit_block = bb2
     end
+    @show exit_block
 
-    # First identify everything that needs to be in our loop carry
+    # XLA's while loop only knows about a condition and body computaton. The condition is
+    # passed a value T, with a given initial value, and subsequent values set to the output
+    # of the body. Finally, the loop returns the T value of the last body evaluation.
+
+    # first identify everything that needs to be in our loop carry: values from outside the
+    # loop (and need to be passed as arguments to the outlined computation), and values
+    # that are carried across iterations.
     used_from_outside = Union{Compiler.Argument, SSAValue}[]
-    used_outside = SSAValue[]
     phi_nodes = Pair{SSAValue,PhiNode}[]
     for bb in Iterators.flatten((loop_header, loop_body_blocks))
         stmt_range = bbs[bb].stmts
         for stmt_idx in stmt_range
-            stmt = ir.stmts[stmt_idx]
+            stmt = ir.stmts[stmt_idx][:inst]
+
             # We handle PhiNodes separately
             if isa(stmt, PhiNode)
                 @assert bb == loop_header
                 push!(phi_nodes, SSAValue(stmt_idx)=>stmt)
                 continue
             end
+
             urs = userefs(stmt)
             for op in urs
                 val = op[]
@@ -350,36 +420,10 @@ function outline_loop!(ir, sv, domtree, loop_header)
         end
     end
     unique!(used_from_outside)
-    for bb in dominated(domtree, exit_block)
-        stmt_range = ir.cfg.blocks[bb].stmts
-        for stmt_idx in stmt_range
-            stmt = ir.stmts[stmt_idx]
-            foreachssa(stmt) do val
-                val_bb = block_for_inst(ir.cfg, val.id)
-                (val_bb == loop_header) || return
-                push!(used_outside, val)
-            end
-        end
-        # We also need to scan the phi nodes of any successor blocks
-        for succ_bb in ir.cfg.blocks[bb].succs
-            if !dominates(domtree, exit_block, succ_bb)
-                stmt_range = ir.cfg.blocks[succ_bb].stmts
-                for stmt_idx in stmt_range
-                    stmt = ir.stmts[stmt_idx]
-                    (isa(stmt, Nothing) || isa(stmt, PhiNode)) || break
-                    isa(stmt, Nothing) && continue
-                    idx = findfirst(==(bb), stmt.edges)
-                    idx === nothing && continue
-                    isassigned(stmt.values, idx) || continue
-                    val = stmt.values[idx]
-                    isa(val, SSAValue) || continue
-                    val_bb = block_for_inst(ir.cfg, val.id)
-                    (val_bb == loop_header) || continue
-                    push!(used_outside, val)
-                end
-            end
-        end
-    end
+    @show used_from_outside
+
+    # We put these in a tuple in the order (phi_nodes..., used_from_outside...)
+    # Replace Phi nodes by getfield calls
     types = Any[]
     ssa_order = Any[]
     for (val, _) in phi_nodes
@@ -390,8 +434,7 @@ function outline_loop!(ir, sv, domtree, loop_header)
         push!(ssa_order, val)
         push!(types, argextype(val, ir, sv.sptypes))
     end
-    # We put these in a tuple in the order (phi_nodes..., used_from_outside...)
-    # Replace Phi nodes by getfield calls
+
     tuple_T = Compiler.tuple_tfunc(types)
     cond_ir = outline_loop_header(ir, domtree, loop_header, types, phi_nodes, used_from_outside)
     append!(cond_ir.argtypes, [nothing, tuple_T])
@@ -420,6 +463,41 @@ function outline_loop!(ir, sv, domtree, loop_header)
     # Insert our while node at the top of the exit_block
     while_return = insert_node!(ir, first_exit_pos, tuple_T,
         Expr(:call, _HloWhile(cond_ir, body_ir), initial), false)
+
+    # identify the values that the loop produces and are used outside
+    used_outside = SSAValue[]
+    for bb in dominated(domtree, exit_block)
+        stmt_range = ir.cfg.blocks[bb].stmts
+        for stmt_idx in stmt_range
+            stmt = ir.stmts[stmt_idx][:inst]
+            foreachssa(stmt) do val
+                val_bb = block_for_inst(ir.cfg, val.id)
+                (val_bb == loop_header) || return
+                push!(used_outside, val)
+            end
+        end
+        # We also need to scan the phi nodes of any successor blocks
+        for succ_bb in ir.cfg.blocks[bb].succs
+            if !dominates(domtree, exit_block, succ_bb)
+                stmt_range = ir.cfg.blocks[succ_bb].stmts
+                for stmt_idx in stmt_range
+                    stmt = ir.stmts[stmt_idx][:inst]
+                    (isa(stmt, Nothing) || isa(stmt, PhiNode)) || break
+                    isa(stmt, Nothing) && continue
+                    idx = findfirst(==(bb), stmt.edges)
+                    idx === nothing && continue
+                    isassigned(stmt.values, idx) || continue
+                    val = stmt.values[idx]
+                    isa(val, SSAValue) || continue
+                    val_bb = block_for_inst(ir.cfg, val.id)
+                    (val_bb == loop_header) || continue
+                    push!(used_outside, val)
+                end
+            end
+        end
+    end
+    @show used_outside
+
     # Insert destructuring calls
     used_outside_replacement = Any[]
     for u in used_outside
@@ -428,6 +506,7 @@ function outline_loop!(ir, sv, domtree, loop_header)
             insert_node!(ir, first_exit_pos, types[idx],
                 Expr(:call, Core.getfield, while_return, idx), false))
     end
+
     # Replace any outside uses of loop values
     for bb in dominated(domtree, exit_block)
         stmt_range = ir.cfg.blocks[bb].stmts
@@ -440,7 +519,7 @@ function outline_loop!(ir, sv, domtree, loop_header)
                     op[] = used_outside_replacement[findfirst(==(val), used_outside)]
                 end
             end
-            ir.stmts[stmt_idx] = urs[]
+            ir.stmts[stmt_idx][:inst] = urs[][:inst]
         end
         for succ_bb in ir.cfg.blocks[bb].succs
             if !dominates(domtree, exit_block, succ_bb)
@@ -461,6 +540,7 @@ function outline_loop!(ir, sv, domtree, loop_header)
         end
     end
     ir = Compiler.compact!(ir)
+
     Compiler.verify_ir(ir)
     ir
 end
@@ -481,12 +561,14 @@ function outline_if!(ir, sv, domtree, split_block, join_block)
             end
         end
     end
+    @show divergence_blocks
 
     phi_node = ir.stmts[ir.cfg.blocks[join_block].stmts[1]][:inst]
     if !isa(phi_node, PhiNode)
         # one of the blocks might throw
         phi_node = nothing
     end
+    @show phi_node
 
     # find the SSA values from outside the branch that are used in each arm
     used_from_outside = [[] for _ in 1:2]
@@ -582,7 +664,7 @@ function outline_control_flow!(ir, sv)
 
     domtree = Compiler.construct_domtree(ir.cfg.blocks)
 
-    todo = analyze_regions(domtree, ir.cfg)
+    @show todo = analyze_regions(domtree, ir.cfg)
     while !isempty(todo)
         item = popfirst!(todo)
         if isa(item, OutlineLoop)
